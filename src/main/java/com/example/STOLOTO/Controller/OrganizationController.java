@@ -37,17 +37,17 @@ public class OrganizationController {
     }
 
     @GetMapping("/my")
-    public OrganizationResponse my() {
+    public List<OrganizationResponse> my() {
         return organizationService.my();
     }
 
     @PatchMapping("/{id}")
-    public OrganizationResponse update(@PathVariable String id, @Valid @RequestBody UpdateOrganizationRequest request) {
+    public OrganizationResponse update(@PathVariable Long id, @Valid @RequestBody UpdateOrganizationRequest request) {
         return organizationService.update(id, request);
     }
 
     @PostMapping("/{id}/resubmit")
-    public OrganizationResponse resubmit(@PathVariable String id) {
+    public OrganizationResponse resubmit(@PathVariable Long id) {
         return organizationService.resubmit(id);
     }
 
@@ -62,12 +62,12 @@ public class OrganizationController {
     }
 
     @GetMapping("/{id}")
-    public OrganizationResponse get(@PathVariable String id) {
+    public OrganizationResponse get(@PathVariable Long id) {
         return organizationService.get(id);
     }
 
     @GetMapping("/{id}/events")
-    public List<EventShortResponse> events(@PathVariable String id) {
+    public List<EventShortResponse> events(@PathVariable Long id) {
         return organizationService.events(id);
     }
 }

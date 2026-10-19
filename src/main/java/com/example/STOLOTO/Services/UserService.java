@@ -1,21 +1,22 @@
 package com.example.STOLOTO.Services;
 
-import java.util.Comparator;
+import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.event.OrganizerEventResponse;
 import com.example.STOLOTO.DTO.participation.MyParticipationResponse;
 import com.example.STOLOTO.DTO.user.PublicUserResponse;
 import com.example.STOLOTO.DTO.user.UpdateProfileRequest;
 import com.example.STOLOTO.DTO.user.UserResponse;
-import com.example.STOLOTO.exception.ApiException;
-import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.EventStatus;
-import com.example.STOLOTO.Models.Participation;
+import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
@@ -25,6 +26,7 @@ import com.example.STOLOTO.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class UserService {
 
@@ -36,14 +38,14 @@ public class UserService {
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
 
-    public PublicUserResponse publicProfile(String id) {
-        User u = users.findById(id).orElseThrow(() -> ApiException.notFound("Пользователь не найден"));
-        var created = events.findByOrganizerUserId(id).stream()
-                .filter(e -> e.getStatus() == EventStatus.PUBLISHED)
-                .sorted(Comparator.comparing(Event::getStartsAt).reversed())
+    @Transactional(readOnly = true)
+    public PublicUserResponse publicProfile(Long id) {
+        User u = users.findById(id).filter(User::isActive)
+                .orElseThrow(() -> ApiException.notFound("Пользователь не найден"));
+        var created = events.findByOrganizerUserIdAndStatusOrderByStartsAtDesc(id, EventStatus.PUBLISHED).stream()
                 .map(mapper::toEventShort)
                 .toList();
-        return new PublicUserResponse(u.getId(), u.getName(), u.getAvatarUrl(), u.getCity(), u.getBio(),
+        return new PublicUserResponse(u.getId(), u.getName(), u.getAvatarUrl(), u.getCity(), u.getAbout(),
                 u.getLevel(), mapper.sports(u.getSportIds()), created);
     }
 
@@ -59,38 +61,38 @@ public class UserService {
             u.setCity(blankToNull(r.city()));
         }
         if (r.bio() != null) {
-            u.setBio(blankToNull(r.bio()));
+            u.setAbout(blankToNull(r.bio()));
         }
         if (r.avatarUrl() != null) {
             u.setAvatarUrl(blankToNull(r.avatarUrl()));
         }
         if (r.sportIds() != null) {
-            u.setSportIds(sportService.validateIds(r.sportIds(), "sport_ids"));
+            u.setSportIds(new LinkedHashSet<>(sportService.validateIds(r.sportIds(), "sport_ids")));
         }
         if (r.level() != null) {
             u.setLevel(r.level());
         }
+        u.setUpdatedAt(Instant.now());
         return mapper.toUser(users.save(u));
     }
 
+    /** События, где я организатор: созданные лично и от моих организаций. */
+    @Transactional(readOnly = true)
     public List<OrganizerEventResponse> myEvents() {
-        String me = currentUser.require().getId();
-        var orgIds = organizations.findByOwnerId(me).stream().map(o -> o.getId()).toList();
-        return events.findAll().stream()
-                .filter(e -> me.equals(e.getOrganizerUserId())
-                        || (e.getOrganizerOrgId() != null && orgIds.contains(e.getOrganizerOrgId())))
-                .sorted(Comparator.comparing(Event::getStartsAt).reversed())
+        Long me = currentUser.require().getId();
+        var orgIds = organizations.findByOwnerIdOrderByCreatedAtDesc(me).stream().map(Organization::getId).toList();
+        return events.findByOrganizerUserIdOrOrganizerOrgIdInOrderByStartsAtDesc(me, orgIds).stream()
                 .map(e -> new OrganizerEventResponse(mapper.toEventShort(e),
                         mapper.count(e.getId(), ParticipationStatus.PENDING),
-                        mapper.count(e.getId(), ParticipationStatus.WAITLISTED)))
+                        mapper.count(e.getId(), ParticipationStatus.WAITLIST)))
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<MyParticipationResponse> myParticipations(ParticipationStatus status) {
-        String me = currentUser.require().getId();
-        return participations.findByUserId(me).stream()
+        Long me = currentUser.require().getId();
+        return participations.findByUserIdOrderByCreatedAtDesc(me).stream()
                 .filter(p -> status == null || p.getStatus() == status)
-                .sorted(Comparator.comparing(Participation::getCreatedAt).reversed())
                 .map(p -> new MyParticipationResponse(mapper.toParticipation(p),
                         events.findById(p.getEventId()).map(mapper::toEventShort).orElse(null)))
                 .toList();

@@ -2,10 +2,12 @@ package com.example.STOLOTO.Models;
 
 import java.time.Instant;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
-
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -13,18 +15,25 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@RedisHash("comments")
+@Entity
+@Table(name = "comments")
 public class Comment {
     @Id
-    private String id;
-    @Indexed
-    private String eventId;
-    private String authorId;
-    private String asOrganizationId;
-    private String parentId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long eventId;
+    private Long authorId;
+    private Long asOrganizationId;
+    private Long parentId;
     private String text;
+
+    @Column(name = "is_hidden")
     private boolean hidden;
+    private Long hiddenBy;
+    private Instant hiddenAt;
     private String hiddenReason;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

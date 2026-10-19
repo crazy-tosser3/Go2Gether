@@ -4,7 +4,7 @@ import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Models.OrganizationType;
 
 public record OrganizationShortResponse(
-        String id,
+        Long id,
         String name,
         OrganizationType type,
         String city,

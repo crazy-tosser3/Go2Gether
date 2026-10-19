@@ -1,24 +1,25 @@
 package com.example.STOLOTO.DTO.organization;
 
 import java.time.Instant;
-import java.util.List;
 
-import com.example.STOLOTO.DTO.sport.SportResponse;
 import com.example.STOLOTO.DTO.user.UserShortResponse;
 import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Models.OrganizationType;
 
+/** reject_reason / decided_at заполняются только для владельца и админа. */
 public record OrganizationResponse(
-        String id,
+        Long id,
         String name,
         String description,
         OrganizationType type,
-        List<SportResponse> sports,
+        String sportsDescription,
         String city,
+        String websiteUrl,
+        String avatarUrl,
         String contacts,
         OrganizationStatus status,
         String rejectReason,
-        Instant reviewedAt,
+        Instant decidedAt,
         UserShortResponse owner,
         Instant createdAt,
         Instant updatedAt) {

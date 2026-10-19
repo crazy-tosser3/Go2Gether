@@ -5,9 +5,9 @@ import java.time.Instant;
 import com.example.STOLOTO.Models.ParticipationStatus;
 
 public record ParticipationResponse(
-        String id,
-        String eventId,
-        String userId,
+        Long id,
+        Long eventId,
+        Long userId,
         ParticipationStatus status,
         String message,
         String decisionReason,

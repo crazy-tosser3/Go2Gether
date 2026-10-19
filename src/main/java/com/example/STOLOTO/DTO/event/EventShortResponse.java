@@ -8,7 +8,7 @@ import com.example.STOLOTO.Models.JoinMode;
 import com.example.STOLOTO.Models.Level;
 
 public record EventShortResponse(
-        String id,
+        Long id,
         String title,
         SportResponse sport,
         OrganizerResponse organizer,

@@ -2,10 +2,14 @@ package com.example.STOLOTO.Models;
 
 import java.time.Instant;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
-
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -13,16 +17,22 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@RedisHash("sports")
+@Entity
+@Table(name = "sports")
 public class Sport {
     @Id
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     private String name;
-    @Indexed
     private String normalizedName;
-    private SportCategory category;
+
+    @Enumerated(EnumType.STRING)
+    private SportCategory category = SportCategory.OTHER;
     private String icon;
+
+    @Column(name = "is_custom")
     private boolean custom;
-    private String createdBy;
+    private Long createdBy;
     private Instant createdAt;
 }

@@ -25,7 +25,7 @@ import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Services.AdminService;
 import com.example.STOLOTO.Services.CommentService;
 import com.example.STOLOTO.Services.EventService;
-import com.example.STOLOTO.Services.ModerationLogService;
+import com.example.STOLOTO.Services.AuditService;
 import com.example.STOLOTO.Services.OrganizationService;
 
 import jakarta.validation.Valid;
@@ -40,7 +40,7 @@ public class AdminController {
     private final OrganizationService organizationService;
     private final EventService eventService;
     private final CommentService commentService;
-    private final ModerationLogService moderationLogService;
+    private final AuditService auditService;
 
     @GetMapping("/dashboard")
     public DashboardResponse dashboard() {
@@ -59,17 +59,17 @@ public class AdminController {
     }
 
     @GetMapping("/organizations/{id}")
-    public AdminOrganizationDetailsResponse organization(@PathVariable String id) {
+    public AdminOrganizationDetailsResponse organization(@PathVariable Long id) {
         return organizationService.adminDetails(id);
     }
 
     @PostMapping("/organizations/{id}/approve")
-    public OrganizationResponse approveOrganization(@PathVariable String id) {
+    public OrganizationResponse approveOrganization(@PathVariable Long id) {
         return organizationService.approve(id);
     }
 
     @PostMapping("/organizations/{id}/reject")
-    public OrganizationResponse rejectOrganization(@PathVariable String id,
+    public OrganizationResponse rejectOrganization(@PathVariable Long id,
             @Valid @RequestBody ReasonRequest request) {
         return organizationService.reject(id, request.reason());
     }
@@ -80,36 +80,37 @@ public class AdminController {
     public PageResponse<EventShortResponse> events(
             @RequestParam(required = false) EventStatus status,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) String organizer,
+            @RequestParam(required = false) Long organizer,
+            @RequestParam(required = false) Long organization,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        return eventService.adminSearch(status, q, organizer, page, size);
+        return eventService.adminSearch(status, q, organizer, organization, page, size);
     }
 
     @GetMapping("/events/{id}")
-    public AdminEventDetailsResponse event(@PathVariable String id) {
+    public AdminEventDetailsResponse event(@PathVariable Long id) {
         return eventService.adminDetails(id);
     }
 
     @PostMapping("/events/{id}/unpublish")
-    public EventDetailsResponse unpublish(@PathVariable String id, @Valid @RequestBody ReasonRequest request) {
+    public EventDetailsResponse unpublish(@PathVariable Long id, @Valid @RequestBody ReasonRequest request) {
         return eventService.unpublish(id, request.reason());
     }
 
     @DeleteMapping("/events/{id}")
-    public EventDetailsResponse delete(@PathVariable String id, @Valid @RequestBody ReasonRequest request) {
+    public EventDetailsResponse delete(@PathVariable Long id, @Valid @RequestBody ReasonRequest request) {
         return eventService.delete(id, request.reason());
     }
 
     @PostMapping("/events/{id}/restore")
-    public EventDetailsResponse restore(@PathVariable String id) {
+    public EventDetailsResponse restore(@PathVariable Long id) {
         return eventService.restore(id);
     }
 
     // комментарии и журнал
 
     @PostMapping("/comments/{cid}/hide")
-    public CommentResponse hideComment(@PathVariable String cid, @Valid @RequestBody ReasonRequest request) {
+    public CommentResponse hideComment(@PathVariable Long cid, @Valid @RequestBody ReasonRequest request) {
         return commentService.hide(cid, request.reason());
     }
 
@@ -118,6 +119,6 @@ public class AdminController {
             @RequestParam(name = "target_type", required = false) ModerationTargetType targetType,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        return moderationLogService.list(targetType, page, size);
+        return auditService.list(targetType, page, size);
     }
 }

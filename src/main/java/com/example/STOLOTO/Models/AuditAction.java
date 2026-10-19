@@ -1,0 +1,5 @@
+package com.example.STOLOTO.Models;
+
+public enum AuditAction {
+    ORG_APPROVED, ORG_REJECTED, EVENT_UNPUBLISHED, EVENT_DELETED, EVENT_RESTORED, COMMENT_HIDDEN
+}

@@ -1,13 +1,17 @@
 package com.example.STOLOTO.Models;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,23 +19,33 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@RedisHash("organizations")
+@Entity
+@Table(name = "organizations")
 public class Organization {
     @Id
-    private String id;
-    @Indexed
-    private String ownerId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long ownerId;
     private String name;
     private String description;
-    private OrganizationType type;
-    private List<String> sportIds = new ArrayList<>();
+    /** «Чем занимается организация». */
+    private String sportsDescription;
     private String city;
+    private String websiteUrl;
+    private String avatarUrl;
+
+    @Enumerated(EnumType.STRING)
+    private OrganizationType type = OrganizationType.CLUB;
     private String contacts;
-    @Indexed
-    private OrganizationStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    private OrganizationStatus status = OrganizationStatus.PENDING;
     private String rejectReason;
-    private String reviewedBy;
-    private Instant reviewedAt;
+    private Long decidedBy;
+    private Instant decidedAt;
+
     private Instant createdAt;
     private Instant updatedAt;
 }

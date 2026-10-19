@@ -6,9 +6,9 @@ import com.example.STOLOTO.DTO.organization.OrganizationShortResponse;
 import com.example.STOLOTO.DTO.user.UserShortResponse;
 
 public record CommentResponse(
-        String id,
-        String eventId,
-        String parentId,
+        Long id,
+        Long eventId,
+        Long parentId,
         UserShortResponse author,
         OrganizationShortResponse asOrganization,
         boolean isOrganizer,

@@ -24,13 +24,13 @@ public class CommentController {
     private final CommentService commentService;
 
     @PatchMapping("/{cid}")
-    public CommentResponse update(@PathVariable String cid, @Valid @RequestBody UpdateCommentRequest request) {
+    public CommentResponse update(@PathVariable Long cid, @Valid @RequestBody UpdateCommentRequest request) {
         return commentService.update(cid, request.text());
     }
 
     @DeleteMapping("/{cid}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String cid) {
+    public void delete(@PathVariable Long cid) {
         commentService.delete(cid);
     }
 }

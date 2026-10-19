@@ -7,29 +7,31 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
-import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/** Доступ к текущему пользователю из JWT (sub = id пользователя). */
 @Component
 @RequiredArgsConstructor
 public class CurrentUser {
 
     private final UserRepository users;
 
-    public Optional<String> id() {
-        return token().map(t -> t.getToken().getSubject());
+    public Optional<Long> id() {
+        return token().map(t -> Long.valueOf(t.getToken().getSubject()));
     }
 
     public Optional<String> tokenId() {
         return token().map(t -> t.getToken().getId());
     }
 
+    /** Деактивированный пользователь (is_active = false) считается неавторизованным. */
     public Optional<User> find() {
-        return id().flatMap(users::findById);
+        return id().flatMap(users::findById).filter(User::isActive);
     }
 
     public User require() {

@@ -1,6 +1,6 @@
 package com.example.STOLOTO.Services;
 
-import java.util.Comparator;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -19,10 +19,10 @@ import com.example.STOLOTO.DTO.participation.ParticipationResponse;
 import com.example.STOLOTO.DTO.sport.SportResponse;
 import com.example.STOLOTO.DTO.user.UserResponse;
 import com.example.STOLOTO.DTO.user.UserShortResponse;
+import com.example.STOLOTO.Models.AuditLog;
 import com.example.STOLOTO.Models.Comment;
 import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.EventStatus;
-import com.example.STOLOTO.Models.ModerationLog;
 import com.example.STOLOTO.Models.Notification;
 import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.OrganizerType;
@@ -38,6 +38,7 @@ import com.example.STOLOTO.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/** Сборка DTO из сущностей + общая проверка «кто организатор события». */
 @Component
 @RequiredArgsConstructor
 public class DtoMapper {
@@ -49,55 +50,57 @@ public class DtoMapper {
     private final OrganizationRepository organizations;
     private final ParticipationRepository participations;
 
-    // users
+    // ---------- users
 
     public UserResponse toUser(User u) {
         return new UserResponse(u.getId(), u.getName(), u.getEmail(), u.getRole(), u.getAvatarUrl(), u.getCity(),
-                u.getBio(), u.getLevel(), List.copyOf(u.getSportIds()), u.isDemo(), u.getCreatedAt());
+                u.getAbout(), u.getLevel(), List.copyOf(u.getSportIds()), u.isDemo(), u.getCreatedAt());
     }
 
     public UserShortResponse toUserShort(User u) {
         return new UserShortResponse(u.getId(), u.getName(), u.getAvatarUrl());
     }
 
-    public UserShortResponse userShort(String userId) {
+    public UserShortResponse userShort(Long userId) {
         return userId == null ? null : users.findById(userId).map(this::toUserShort).orElse(DELETED_USER);
     }
 
-    // sports
+    // ---------- sports
 
     public SportResponse toSport(Sport s) {
         return new SportResponse(s.getId(), s.getName(), s.getCategory(), s.getIcon(), s.isCustom());
     }
 
-    public SportResponse sport(String sportId) {
+    public SportResponse sport(Long sportId) {
         return sportId == null ? null : sports.findById(sportId).map(this::toSport).orElse(null);
     }
 
-    public List<SportResponse> sports(List<String> sportIds) {
+    public List<SportResponse> sports(Collection<Long> sportIds) {
         return sportIds == null ? List.of() : sportIds.stream().map(this::sport).filter(Objects::nonNull).toList();
     }
 
-    // organizations
+    // ---------- organizations
 
     public OrganizationShortResponse toOrganizationShort(Organization o) {
         return new OrganizationShortResponse(o.getId(), o.getName(), o.getType(), o.getCity(), o.getStatus());
     }
 
-    public OrganizationShortResponse organizationShort(String orgId) {
+    public OrganizationShortResponse organizationShort(Long orgId) {
         return orgId == null ? null : organizations.findById(orgId).map(this::toOrganizationShort).orElse(null);
     }
 
+    /** privileged — владелец или админ: видит причину отклонения и дату решения. */
     public OrganizationResponse toOrganization(Organization o, boolean privileged) {
         return new OrganizationResponse(o.getId(), o.getName(), o.getDescription(), o.getType(),
-                sports(o.getSportIds()), o.getCity(), o.getContacts(), o.getStatus(),
-                privileged ? o.getRejectReason() : null, privileged ? o.getReviewedAt() : null,
+                o.getSportsDescription(), o.getCity(), o.getWebsiteUrl(), o.getAvatarUrl(), o.getContacts(),
+                o.getStatus(), privileged ? o.getRejectReason() : null, privileged ? o.getDecidedAt() : null,
                 userShort(o.getOwnerId()), o.getCreatedAt(), o.getUpdatedAt());
     }
 
-    // events
+    // ---------- events
 
-    public boolean isOrganizer(Event e, String userId) {
+    /** Организатор события — автор-пользователь или владелец организации-организатора. */
+    public boolean isOrganizer(Event e, Long userId) {
         if (userId == null) {
             return false;
         }
@@ -108,43 +111,52 @@ public class DtoMapper {
                 .map(o -> userId.equals(o.getOwnerId())).orElse(false);
     }
 
+    /** Кому слать уведомления организатора: автору или владельцу организации. */
+    public Long organizerRecipient(Event e) {
+        if (e.getOrganizerUserId() != null) {
+            return e.getOrganizerUserId();
+        }
+        return organizations.findById(e.getOrganizerOrgId()).map(Organization::getOwnerId).orElse(null);
+    }
+
     public OrganizerResponse organizer(Event e) {
-        if (e.getOrganizerType() == OrganizerType.ORGANIZATION && e.getOrganizerOrgId() != null) {
-            String name = organizations.findById(e.getOrganizerOrgId()).map(Organization::getName).orElse(null);
-            return new OrganizerResponse(OrganizerType.ORGANIZATION, e.getOrganizerOrgId(), name, null);
+        if (e.organizerType() == OrganizerType.ORGANIZATION) {
+            var org = organizations.findById(e.getOrganizerOrgId());
+            return new OrganizerResponse(OrganizerType.ORGANIZATION, e.getOrganizerOrgId(),
+                    org.map(Organization::getName).orElse(null), org.map(Organization::getAvatarUrl).orElse(null));
         }
         UserShortResponse u = userShort(e.getOrganizerUserId());
         return new OrganizerResponse(OrganizerType.USER, e.getOrganizerUserId(), u.name(), u.avatarUrl());
     }
 
     public String organizerContacts(Event e) {
-        if (e.getOrganizerType() == OrganizerType.ORGANIZATION && e.getOrganizerOrgId() != null) {
+        if (e.organizerType() == OrganizerType.ORGANIZATION) {
             return organizations.findById(e.getOrganizerOrgId()).map(Organization::getContacts).orElse(null);
         }
         return users.findById(e.getOrganizerUserId()).map(User::getEmail).orElse(null);
     }
 
-    public long count(String eventId, ParticipationStatus status) {
-        return participations.findByEventId(eventId).stream().filter(p -> p.getStatus() == status).count();
+    public long count(Long eventId, ParticipationStatus status) {
+        return participations.countByEventIdAndStatus(eventId, status);
     }
 
     public EventShortResponse toEventShort(Event e) {
         return new EventShortResponse(e.getId(), e.getTitle(), sport(e.getSportId()), organizer(e), e.getStartsAt(),
                 e.getEndsAt(), e.getCity(), e.getAddress(), e.getLevel(), e.getJoinMode(), e.getCapacity(),
-                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(), e.isPast(), e.getUpdatedAt() != null);
+                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(), e.isPast(), e.isEdited());
     }
 
+    /** Карточка события глазами viewer (null — гость). */
     public EventDetailsResponse toEventDetails(Event e, User viewer) {
-        String viewerId = viewer == null ? null : viewer.getId();
+        Long viewerId = viewer == null ? null : viewer.getId();
         boolean organizer = isOrganizer(e, viewerId);
         boolean admin = viewer != null && viewer.getRole() == Role.ADMIN;
 
-        List<Participation> eventParticipations = participations.findByEventId(e.getId());
-        List<Participation> confirmed = eventParticipations.stream()
-                .filter(p -> p.getStatus() == ParticipationStatus.CONFIRMED)
-                .sorted(Comparator.comparing(Participation::getCreatedAt))
-                .toList();
-        Participation mine = viewerId == null ? null : latestFor(eventParticipations, viewerId);
+        List<Participation> confirmed =
+                participations.findByEventIdAndStatusOrderByCreatedAtAsc(e.getId(), ParticipationStatus.CONFIRMED);
+        Participation mine = viewerId == null
+                ? null
+                : participations.findByEventIdAndUserId(e.getId(), viewerId).orElse(null);
         boolean confirmedParticipant = mine != null && mine.getStatus() == ParticipationStatus.CONFIRMED;
         boolean fullInfo = organizer || admin || confirmedParticipant;
 
@@ -155,19 +167,11 @@ public class DtoMapper {
                 e.getCapacity(), confirmed.size(),
                 confirmed.stream().map(p -> userShort(p.getUserId())).toList(),
                 e.getStatus(), e.getStatus() == EventStatus.PUBLISHED ? null : e.unavailableReason(),
-                e.isPast(), e.getUpdatedAt() != null, organizer,
+                e.isPast(), e.isEdited(), organizer,
                 mine == null ? null : toParticipation(mine), e.getCreatedAt(), e.getUpdatedAt());
     }
 
-    public Participation latestFor(List<Participation> eventParticipations, String userId) {
-        return eventParticipations.stream()
-                .filter(p -> userId.equals(p.getUserId()))
-                .max(Comparator.comparing((Participation p) -> p.getStatus().isActive())
-                        .thenComparing(Participation::getCreatedAt))
-                .orElse(null);
-    }
-
-    // articipations
+    // ---------- participations
 
     public ParticipationResponse toParticipation(Participation p) {
         return new ParticipationResponse(p.getId(), p.getEventId(), p.getUserId(), p.getStatus(), p.getMessage(),
@@ -180,7 +184,7 @@ public class DtoMapper {
                 withContacts ? p.getMessage() : null, withContacts ? p.getDecisionReason() : null, p.getCreatedAt());
     }
 
-    // comments
+    // ---------- comments
 
     public CommentResponse toComment(Comment c, Event e, boolean admin) {
         boolean byOrganizer = c.getAuthorId().equals(e.getOrganizerUserId())
@@ -191,14 +195,15 @@ public class DtoMapper {
                 c.getUpdatedAt());
     }
 
-    // misc
+    // ---------- misc
 
     public NotificationResponse toNotification(Notification n) {
-        return new NotificationResponse(n.getId(), n.getType(), n.getPayload(), n.isRead(), n.getCreatedAt());
+        return new NotificationResponse(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getEventId(),
+                n.isRead(), n.getCreatedAt());
     }
 
-    public ModerationLogResponse toModerationLog(ModerationLog l) {
-        return new ModerationLogResponse(l.getId(), userShort(l.getAdminId()), l.getTargetType(), l.getTargetId(),
-                l.getAction(), l.getReason(), l.getCreatedAt());
+    public ModerationLogResponse toModerationLog(AuditLog l) {
+        return new ModerationLogResponse(l.getId(), userShort(l.getAdminId()), l.getAction(), l.targetType(),
+                l.targetId(), l.getReason(), l.getCreatedAt());
     }
 }

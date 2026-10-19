@@ -1,12 +1,13 @@
 package com.example.STOLOTO.Services;
 
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.admin.AdminOrganizationDetailsResponse;
 import com.example.STOLOTO.DTO.common.PageResponse;
@@ -14,16 +15,14 @@ import com.example.STOLOTO.DTO.event.EventShortResponse;
 import com.example.STOLOTO.DTO.organization.CreateOrganizationRequest;
 import com.example.STOLOTO.DTO.organization.OrganizationResponse;
 import com.example.STOLOTO.DTO.organization.UpdateOrganizationRequest;
-import com.example.STOLOTO.exception.ApiException;
-import com.example.STOLOTO.Models.Event;
+import com.example.STOLOTO.Models.AuditAction;
 import com.example.STOLOTO.Models.EventStatus;
-import com.example.STOLOTO.Models.ModerationAction;
-import com.example.STOLOTO.Models.ModerationTargetType;
 import com.example.STOLOTO.Models.NotificationType;
 import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
 import com.example.STOLOTO.repository.UserRepository;
@@ -32,51 +31,48 @@ import com.example.STOLOTO.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class OrganizationService {
 
     private final OrganizationRepository organizations;
     private final EventRepository events;
     private final UserRepository users;
-    private final SportService sportService;
     private final NotificationService notificationService;
-    private final ModerationLogService moderationLog;
+    private final AuditService audit;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
 
-    // владелец
+    // ---------- владелец (у одного владельца может быть несколько организаций)
 
     public OrganizationResponse create(CreateOrganizationRequest r) {
         User me = currentUser.require();
-        if (!organizations.findByOwnerId(me.getId()).isEmpty()) {
-            throw ApiException.conflict("ORGANIZATION_EXISTS", "У вас уже есть организация");
-        }
         Organization o = new Organization();
-        o.setId(UUID.randomUUID().toString());
         o.setOwnerId(me.getId());
         o.setName(r.name().trim());
         o.setDescription(r.description());
         o.setType(r.type());
-        o.setSportIds(r.sportIds() == null ? List.of() : sportService.validateIds(r.sportIds(), "sport_ids"));
+        o.setSportsDescription(r.sportsDescription());
         o.setCity(r.city());
+        o.setWebsiteUrl(r.websiteUrl());
+        o.setAvatarUrl(r.avatarUrl());
         o.setContacts(r.contacts());
         o.setStatus(OrganizationStatus.PENDING);
         o.setCreatedAt(Instant.now());
+        o.setUpdatedAt(o.getCreatedAt());
         return mapper.toOrganization(organizations.save(o), true);
     }
 
-    public OrganizationResponse my() {
-        String me = currentUser.require().getId();
-        return organizations.findByOwnerId(me).stream().findFirst()
+    @Transactional(readOnly = true)
+    public List<OrganizationResponse> my() {
+        Long me = currentUser.require().getId();
+        return organizations.findByOwnerIdOrderByCreatedAtDesc(me).stream()
                 .map(o -> mapper.toOrganization(o, true))
-                .orElseThrow(() -> ApiException.notFound("У вас нет организации"));
+                .toList();
     }
 
-    public OrganizationResponse update(String id, UpdateOrganizationRequest r) {
+    public OrganizationResponse update(Long id, UpdateOrganizationRequest r) {
         Organization o = requireOwned(id);
-        if (o.getStatus() == OrganizationStatus.BLOCKED) {
-            throw ApiException.forbidden("Организация заблокирована");
-        }
         if (r.name() != null) {
             o.setName(r.name().trim());
         }
@@ -86,58 +82,68 @@ public class OrganizationService {
         if (r.type() != null) {
             o.setType(r.type());
         }
-        if (r.sportIds() != null) {
-            o.setSportIds(sportService.validateIds(r.sportIds(), "sport_ids"));
+        if (r.sportsDescription() != null) {
+            o.setSportsDescription(r.sportsDescription());
         }
         if (r.city() != null) {
             o.setCity(r.city());
+        }
+        if (r.websiteUrl() != null) {
+            o.setWebsiteUrl(UserService.blankToNull(r.websiteUrl()));
+        }
+        if (r.avatarUrl() != null) {
+            o.setAvatarUrl(UserService.blankToNull(r.avatarUrl()));
         }
         if (r.contacts() != null) {
             o.setContacts(r.contacts());
         }
         o.setUpdatedAt(Instant.now());
-        return mapper.toOrganization(organizations.save(o), true);
+        return mapper.toOrganization(o, true);
     }
 
-    public OrganizationResponse resubmit(String id) {
+    public OrganizationResponse resubmit(Long id) {
         Organization o = requireOwned(id);
         if (o.getStatus() != OrganizationStatus.REJECTED) {
             throw ApiException.conflict("INVALID_STATUS", "Повторно подать можно только отклонённую заявку");
         }
         o.setStatus(OrganizationStatus.PENDING);
         o.setRejectReason(null);
+        o.setDecidedBy(null);
+        o.setDecidedAt(null);
         o.setUpdatedAt(Instant.now());
-        return mapper.toOrganization(organizations.save(o), true);
+        return mapper.toOrganization(o, true);
     }
 
-    // публичное
+    // ---------- публичное
 
-    public PageResponse<OrganizationResponse> catalog(String q, String sport, String city, Integer page, Integer size) {
-        var items = organizations.findByStatus(OrganizationStatus.APPROVED).stream()
-                .filter(o -> matches(o, q))
-                .filter(o -> sport == null || sport.isBlank() || o.getSportIds().contains(sport))
-                .filter(o -> city == null || city.isBlank() || city.equalsIgnoreCase(o.getCity()))
-                .sorted(Comparator.comparing(Organization::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(o -> mapper.toOrganization(o, false))
-                .toList();
-        return PageResponse.of(items, page, size);
+    @Transactional(readOnly = true)
+    public PageResponse<OrganizationResponse> catalog(String q, String sport, String city, Integer page,
+            Integer size) {
+        Specification<Organization> spec = hasStatus(OrganizationStatus.APPROVED)
+                .and(matches(q))
+                .and(containsIgnoreCase("sportsDescription", sport))
+                .and(equalsIgnoreCase("city", city));
+        var pageable = PageResponse.pageable(page, size, Sort.by("name"));
+        return PageResponse.of(organizations.findAll(spec, pageable), o -> mapper.toOrganization(o, false));
     }
 
-    public OrganizationResponse get(String id) {
+    @Transactional(readOnly = true)
+    public OrganizationResponse get(Long id) {
         Organization o = requireVisible(id);
         return mapper.toOrganization(o, isPrivileged(o));
     }
 
-    public List<EventShortResponse> events(String id) {
+    @Transactional(readOnly = true)
+    public List<EventShortResponse> events(Long id) {
         requireVisible(id);
-        return events.findByOrganizerOrgId(id).stream()
-                .filter(e -> e.getStatus() == EventStatus.PUBLISHED)
-                .sorted(Comparator.comparing(Event::getStartsAt))
+        return events.findByOrganizerOrgIdAndStatusOrderByStartsAtAsc(id, EventStatus.PUBLISHED).stream()
                 .map(mapper::toEventShort)
                 .toList();
     }
 
-    public Organization requireApprovedOwned(String orgId, String userId) {
+    /** Для POST /events и комментариев от имени организации: владелец + approved, иначе 403. */
+    @Transactional(readOnly = true)
+    public Organization requireApprovedOwned(Long orgId, Long userId) {
         Organization o = organizations.findById(orgId)
                 .orElseThrow(() -> ApiException.validation("organization_id", "Организация не найдена"));
         if (!userId.equals(o.getOwnerId())) {
@@ -149,64 +155,61 @@ public class OrganizationService {
         return o;
     }
 
-    // админ
+    // ---------- админ
 
+    @Transactional(readOnly = true)
     public PageResponse<OrganizationResponse> adminList(OrganizationStatus status, String q, Integer page,
             Integer size) {
-        var items = organizations.findAll().stream()
-                .filter(o -> status == null || o.getStatus() == status)
-                .filter(o -> matches(o, q))
-                .sorted(Comparator.comparing(Organization::getCreatedAt).reversed())
-                .map(o -> mapper.toOrganization(o, true))
-                .toList();
-        return PageResponse.of(items, page, size);
+        Specification<Organization> spec = hasStatus(status).and(matches(q));
+        var pageable = PageResponse.pageable(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return PageResponse.of(organizations.findAll(spec, pageable), o -> mapper.toOrganization(o, true));
     }
 
-    public AdminOrganizationDetailsResponse adminDetails(String id) {
+    @Transactional(readOnly = true)
+    public AdminOrganizationDetailsResponse adminDetails(Long id) {
         Organization o = require(id);
         var owner = users.findById(o.getOwnerId()).map(mapper::toUser).orElse(null);
-        var orgEvents = events.findByOrganizerOrgId(id).stream()
-                .sorted(Comparator.comparing(Event::getStartsAt).reversed())
+        var orgEvents = events.findByOrganizerOrgIdOrderByStartsAtDesc(id).stream()
                 .map(mapper::toEventShort)
                 .toList();
         return new AdminOrganizationDetailsResponse(mapper.toOrganization(o, true), owner, orgEvents);
     }
 
-    public OrganizationResponse approve(String id) {
+    public OrganizationResponse approve(Long id) {
         User admin = currentUser.require();
         Organization o = requirePending(id);
         o.setStatus(OrganizationStatus.APPROVED);
         o.setRejectReason(null);
-        o.setReviewedBy(admin.getId());
-        o.setReviewedAt(Instant.now());
-        organizations.save(o);
-        moderationLog.log(admin.getId(), ModerationTargetType.ORGANIZATION, id, ModerationAction.APPROVE, null);
-        notificationService.notify(o.getOwnerId(), NotificationType.ORGANIZATION_APPROVED,
-                Map.of("organization_id", id, "organization_name", o.getName()));
+        o.setDecidedBy(admin.getId());
+        o.setDecidedAt(Instant.now());
+        o.setUpdatedAt(o.getDecidedAt());
+        audit.organization(admin.getId(), id, AuditAction.ORG_APPROVED, null);
+        notificationService.notify(o.getOwnerId(), NotificationType.ORG_APPROVED, "Организация допущена",
+                "«" + o.getName() + "» одобрена: страница опубликована, можно создавать события.", null);
         return mapper.toOrganization(o, true);
     }
 
-    public OrganizationResponse reject(String id, String reason) {
+    public OrganizationResponse reject(Long id, String reason) {
         User admin = currentUser.require();
         Organization o = requirePending(id);
         o.setStatus(OrganizationStatus.REJECTED);
         o.setRejectReason(reason);
-        o.setReviewedBy(admin.getId());
-        o.setReviewedAt(Instant.now());
-        organizations.save(o);
-        moderationLog.log(admin.getId(), ModerationTargetType.ORGANIZATION, id, ModerationAction.REJECT, reason);
-        notificationService.notify(o.getOwnerId(), NotificationType.ORGANIZATION_REJECTED,
-                Map.of("organization_id", id, "organization_name", o.getName(), "reason", reason));
+        o.setDecidedBy(admin.getId());
+        o.setDecidedAt(Instant.now());
+        o.setUpdatedAt(o.getDecidedAt());
+        audit.organization(admin.getId(), id, AuditAction.ORG_REJECTED, reason);
+        notificationService.notify(o.getOwnerId(), NotificationType.ORG_REJECTED, "Заявка организации отклонена",
+                "«" + o.getName() + "»: " + reason, null);
         return mapper.toOrganization(o, true);
     }
 
-    // helpers
+    // ---------- helpers
 
-    private Organization require(String id) {
+    private Organization require(Long id) {
         return organizations.findById(id).orElseThrow(() -> ApiException.notFound("Организация не найдена"));
     }
 
-    private Organization requirePending(String id) {
+    private Organization requirePending(Long id) {
         Organization o = require(id);
         if (o.getStatus() != OrganizationStatus.PENDING) {
             throw ApiException.conflict("ALREADY_REVIEWED", "Заявка уже рассмотрена",
@@ -215,8 +218,8 @@ public class OrganizationService {
         return o;
     }
 
-    private Organization requireOwned(String id) {
-        String me = currentUser.require().getId();
+    private Organization requireOwned(Long id) {
+        Long me = currentUser.require().getId();
         Organization o = require(id);
         if (!me.equals(o.getOwnerId())) {
             throw ApiException.forbidden("Вы не владелец этой организации");
@@ -224,7 +227,8 @@ public class OrganizationService {
         return o;
     }
 
-    private Organization requireVisible(String id) {
+    /** Не approved → 404 для всех, кроме владельца и админа. */
+    private Organization requireVisible(Long id) {
         Organization o = require(id);
         if (o.getStatus() != OrganizationStatus.APPROVED && !isPrivileged(o)) {
             throw ApiException.notFound("Организация не найдена");
@@ -238,12 +242,32 @@ public class OrganizationService {
                 .orElse(false);
     }
 
-    private static boolean matches(Organization o, String q) {
+    private static Specification<Organization> hasStatus(OrganizationStatus status) {
+        return (root, query, cb) -> status == null ? null : cb.equal(root.get("status"), status);
+    }
+
+    private static Specification<Organization> matches(String q) {
         if (q == null || q.isBlank()) {
-            return true;
+            return (root, query, cb) -> null;
         }
-        String needle = q.trim().toLowerCase();
-        return o.getName().toLowerCase().contains(needle)
-                || (o.getDescription() != null && o.getDescription().toLowerCase().contains(needle));
+        String like = "%" + q.trim().toLowerCase() + "%";
+        return (root, query, cb) -> cb.or(
+                cb.like(cb.lower(root.get("name")), like),
+                cb.like(cb.lower(cb.coalesce(root.get("description"), "")), like));
+    }
+
+    private static Specification<Organization> containsIgnoreCase(String field, String value) {
+        if (value == null || value.isBlank()) {
+            return (root, query, cb) -> null;
+        }
+        String like = "%" + value.trim().toLowerCase() + "%";
+        return (root, query, cb) -> cb.like(cb.lower(root.get(field)), like);
+    }
+
+    private static Specification<Organization> equalsIgnoreCase(String field, String value) {
+        if (value == null || value.isBlank()) {
+            return (root, query, cb) -> null;
+        }
+        return (root, query, cb) -> cb.equal(cb.lower(root.get(field)), value.trim().toLowerCase());
     }
 }

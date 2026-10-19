@@ -11,6 +11,6 @@ public record UpdateProfileRequest(
         @Size(max = 100) String city,
         @Size(max = 2000) String bio,
         @Size(max = 500) String avatarUrl,
-        @Size(max = 50) List<String> sportIds,
+        @Size(max = 50) List<Long> sportIds,
         Level level) {
 }

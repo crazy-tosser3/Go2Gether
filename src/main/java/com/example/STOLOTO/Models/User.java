@@ -1,13 +1,24 @@
 package com.example.STOLOTO.Models;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,20 +26,41 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@RedisHash("users")
+@Entity
+@Table(name = "users")
 public class User {
     @Id
-    private String id;
-    private Role role = Role.USER;
-    private String name;
-    @Indexed
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     private String email;
     private String passwordHash;
-    private String avatarUrl;
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    private Role role = Role.USER;
+
+    /** «О себе». */
+    private String about;
     private String city;
-    private String bio;
+    private String avatarUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "fitness_level")
     private Level level;
-    private List<String> sportIds = new ArrayList<>();
+
+    /** Интересы пользователя (V10: user_sports). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_sports", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "sport_id")
+    private Set<Long> sportIds = new LinkedHashSet<>();
+
+    @Column(name = "is_active")
+    private boolean active = true;
+    @Column(name = "is_demo")
     private boolean demo;
+
     private Instant createdAt;
+    private Instant updatedAt;
 }
