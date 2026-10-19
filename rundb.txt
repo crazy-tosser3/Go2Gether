@@ -1,11 +1,11 @@
-docker run --name StolotoHack -p 5432:5432 \
+docker run --name StolotoHack -p 15432:15432 \
     -e POSTGRES_DB=Stoloto \
     -e POSTGRES_USER=admin \
     -e POSTGRES_PASSWORD=123456 \
     -d postgres
 
 
-docker run --name StolotoRedis -p 6379:6379 -d redis:7
+docker run --name StolotoRedis -p 16379:16379 -d redis:7
 
 docker exec -it StolotoHack psql -U admin -d UmirFlagman
 
