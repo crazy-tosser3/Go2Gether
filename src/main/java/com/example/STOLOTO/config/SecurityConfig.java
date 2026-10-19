@@ -84,6 +84,22 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(rs -> rs
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .bearerTokenResolver(request -> {
+                            // 1. Сначала ищем токен в куки
+                            if (request.getCookies() != null) {
+                                for (var cookie : request.getCookies()) {
+                                    if ("jwt".equals(cookie.getName())) {
+                                        return cookie.getValue();
+                                    }
+                                }
+                            }
+                            // 2. Если куки нет — смотрим заголовок Authorization: Bearer (для Swagger)
+                            String header = request.getHeader("Authorization");
+                            if (header != null && header.startsWith("Bearer ")) {
+                                return header.substring(7);
+                            }
+                            return null;
+                        })
                         .authenticationEntryPoint(errorHandler)
                         .accessDeniedHandler(errorHandler))
                 .exceptionHandling(e -> e

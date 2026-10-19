@@ -2,7 +2,10 @@ package com.example.STOLOTO.Controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +28,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthController {
 
+    private static final String COOKIE_NAME = "jwt";
+
     private final AuthService authService;
 
     @GetMapping("/demo-accounts")
@@ -33,24 +38,50 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request);
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        AuthResponse body = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(HttpHeaders.SET_COOKIE, buildCookie(body).toString())
+                .body(body);
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        AuthResponse body = authService.login(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildCookie(body).toString())
+                .body(body);
     }
 
     @PostMapping("/logout")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout() {
+    public ResponseEntity<Void> logout() {
         authService.logout();
+        // Удаляем куки — выставляем Max-Age=0
+        ResponseCookie clear = ResponseCookie.from(COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .sameSite("Strict")
+                .maxAge(0)
+                .build();
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clear.toString())
+                .build();
     }
 
     @GetMapping("/me")
     public MeResponse me() {
         return authService.me();
+    }
+
+    // Строим куки с JWT токеном
+    private ResponseCookie buildCookie(AuthResponse auth) {
+        return ResponseCookie.from(COOKIE_NAME, auth.token())
+                .httpOnly(true)          // JS не может прочитать
+                .secure(true)            // только HTTPS
+                .path("/")               // для всех эндпоинтов
+                .sameSite("Strict")      // защита от CSRF
+                .maxAge(auth.expiresIn()) // живёт столько же сколько токен (24ч)
+                .build();
     }
 }
