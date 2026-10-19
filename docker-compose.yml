@@ -1,14 +1,14 @@
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: sport_db        # ← вот тут БД создаётся сама
-      POSTGRES_USER: sport_user
-      POSTGRES_PASSWORD: sport_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+version: '3.9'
 
-volumes:
-  postgres_data:
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768m
