@@ -1,4 +1,3 @@
--- Тип уведомления
 CREATE TYPE notification_type AS ENUM (
     'REGISTRATION_CONFIRMED',   -- заявка принята
     'REGISTRATION_REJECTED',    -- заявка отклонена

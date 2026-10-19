@@ -12,6 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -20,7 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
-
+    private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
+    private static final int MAX_IP_LENGTH = 45;
     // Простой ConcurrentHashMap вместо Caffeine
     // Живёт пока приложение запущено
     private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
@@ -86,8 +90,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private String getClientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+            String ip = forwarded.split(",")[0].trim();
+            if (ip.length() > MAX_IP_LENGTH) {
+                ip = ip.substring(0, MAX_IP_LENGTH);
+            }
+            return ip;
         }
         return request.getRemoteAddr();
+    }
+
+    @Scheduled(fixedDelay = 3_600_000)
+    public void cleanUp() {
+        int before = buckets.size();
+        buckets.entrySet().removeIf(entry ->
+                entry.getValue().getAvailableTokens() >= 298);
+        log.info("RateLimit cleanup: {} → {} buckets", before, buckets.size());
     }
 }

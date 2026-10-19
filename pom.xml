@@ -21,7 +21,7 @@
         <java.version>25</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <bucket4j.version>8.7.0</bucket4j.version>
+        <bucket4j.version>8.10.1</bucket4j.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <lombok.version>1.18.48</lombok.version> <!-- 1.18.36 падает на JDK 25+/27: TypeTag :: UNKNOWN -->
         <argon2.version>2.12</argon2.version>

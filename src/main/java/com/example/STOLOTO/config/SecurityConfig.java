@@ -5,6 +5,8 @@ import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.example.STOLOTO.security.RateLimitFilter;
+import com.example.STOLOTO.security.SecurityHeadersFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,6 +35,7 @@ import com.example.STOLOTO.security.JsonSecurityErrorHandler;
 import com.example.STOLOTO.security.JwtProperties;
 import com.example.STOLOTO.security.JwtService;
 import com.example.STOLOTO.security.TokenStore;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableConfigurationProperties(JwtProperties.class)
@@ -41,10 +44,16 @@ public class SecurityConfig {
     private static final String API = "/api/v1";
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JsonSecurityErrorHandler errorHandler) throws Exception {
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JsonSecurityErrorHandler errorHandler,
+            RateLimitFilter rateLimitFilter,
+            SecurityHeadersFilter headersFilter) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> {})
+                .addFilterBefore(headersFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitFilter, SecurityHeadersFilter.class)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()

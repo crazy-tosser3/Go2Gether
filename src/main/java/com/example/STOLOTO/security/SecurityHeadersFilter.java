@@ -11,7 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 @Component
-@Order(1) // Выполняется первым — до всех остальных фильтров
+@Order(1)
 public class SecurityHeadersFilter extends OncePerRequestFilter {
 
     @Override
@@ -20,32 +20,41 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
                                     FilterChain chain)
             throws ServletException, IOException {
 
-        // Запрещаем встраивать сайт в iframe (защита от clickjacking)
+        String path = request.getRequestURI();
+
+        // Swagger — мягкие заголовки (грузит ресурсы с CDN)
+        if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs")) {
+            response.setHeader("X-Frame-Options", "SAMEORIGIN");
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // Все остальные запросы — максимальная защита
         response.setHeader("X-Frame-Options", "DENY");
-
-        // Браузер не должен угадывать Content-Type (защита от MIME-sniffing атак)
         response.setHeader("X-Content-Type-Options", "nosniff");
-
-        // Только HTTPS, 1 год (включается когда у вас SSL)
         response.setHeader("Strict-Transport-Security",
-                "max-age=31536000; includeSubDomains");
-
-        // Политика безопасности контента — разрешаем только свои ресурсы
+                "max-age=31536000; includeSubDomains; preload");
         response.setHeader("Content-Security-Policy",
                 "default-src 'self'; " +
                         "script-src 'self'; " +
                         "style-src 'self' 'unsafe-inline'; " +
-                        "img-src 'self' data:; " +
+                        "img-src 'self' data: https:; " +
+                        "font-src 'self'; " +
+                        "connect-src 'self'; " +
                         "frame-ancestors 'none'; " +
-                        "form-action 'self'");
-
-        // Не отправляем Referer на другие сайты
-        response.setHeader("Referrer-Policy",
-                "strict-origin-when-cross-origin");
-
-        // Запрещаем браузеру включать микрофон/камеру/геолокацию без спроса
+                        "form-action 'self'; " +
+                        "base-uri 'self'");
+        response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
         response.setHeader("Permissions-Policy",
-                "camera=(), microphone=(), geolocation=()");
+                "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()");
+        response.setHeader("X-XSS-Protection", "1; mode=block");
+
+        if (path.startsWith("/api/")) {
+            response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            response.setHeader("Pragma", "no-cache");
+        }
 
         chain.doFilter(request, response);
     }

@@ -1,10 +1,9 @@
--- Что именно сделал администратор
 CREATE TYPE audit_action AS ENUM (
-    'ORG_APPROVED',        -- одобрил организацию
-    'ORG_REJECTED',        -- отклонил организацию
-    'EVENT_UNPUBLISHED',   -- снял событие с публикации
-    'EVENT_DELETED',       -- удалил событие
-    'COMMENT_HIDDEN'       -- скрыл комментарий
+    'ORG_APPROVED',
+    'ORG_REJECTED',
+    'EVENT_UNPUBLISHED',
+    'EVENT_DELETED',
+    'COMMENT_HIDDEN'
 );
 
 CREATE TABLE audit_log (
@@ -12,12 +11,11 @@ CREATE TABLE audit_log (
     admin_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     action        audit_action NOT NULL,
 
-    -- На что направлено действие (заполняется нужное поле)
     target_org_id      BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     target_event_id    BIGINT REFERENCES events(id)        ON DELETE SET NULL,
     target_comment_id  BIGINT REFERENCES comments(id)      ON DELETE SET NULL,
 
-    reason        TEXT,         -- причина, которую ввёл администратор
+    reason        TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
