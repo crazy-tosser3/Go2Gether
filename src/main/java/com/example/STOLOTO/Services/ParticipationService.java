@@ -118,6 +118,27 @@ public class ParticipationService {
         return mapper.toParticipation(p);
     }
 
+    /**
+     * Отменить все активные записи пользователя (удаление аккаунта). Освободившиеся места
+     * отдаются листу ожидания.
+     */
+    public void cancelAllForUser(Long userId) {
+        participations.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(p -> p.getStatus().isActive())
+                .forEach(p -> {
+                    Event e = lockEvent(p.getEventId());
+                    boolean freedSeat = p.getStatus() == ParticipationStatus.CONFIRMED;
+                    p.setStatus(ParticipationStatus.CANCELLED);
+                    p.setWaitlistPosition(null);
+                    p.setUpdatedAt(Instant.now());
+                    participations.flush();
+                    regions.eventChanged(e);
+                    if (freedSeat) {
+                        promoteFromWaitlist(e);
+                    }
+                });
+    }
+
     @Transactional(readOnly = true)
     public ParticipationResponse myParticipation(Long eventId) {
         User me = currentUser.require();

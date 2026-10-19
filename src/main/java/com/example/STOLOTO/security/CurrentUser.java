@@ -14,7 +14,6 @@ import com.example.STOLOTO.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/** Доступ к текущему пользователю из JWT (sub = id пользователя). */
 @Component
 @RequiredArgsConstructor
 public class CurrentUser {
@@ -29,7 +28,6 @@ public class CurrentUser {
         return token().map(t -> t.getToken().getId());
     }
 
-    /** Деактивированный пользователь (is_active = false) считается неавторизованным. */
     public Optional<User> find() {
         return id().flatMap(users::findById).filter(User::isActive);
     }

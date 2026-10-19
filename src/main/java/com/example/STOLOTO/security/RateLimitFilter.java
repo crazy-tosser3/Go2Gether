@@ -25,8 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RateLimitFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
     private static final int MAX_IP_LENGTH = 45;
-    // Простой ConcurrentHashMap вместо Caffeine
-    // Живёт пока приложение запущено
+
     private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
 
     private final ObjectMapper objectMapper = new ObjectMapper();

@@ -4,26 +4,31 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.event.OrganizerEventResponse;
 import com.example.STOLOTO.DTO.participation.MyParticipationResponse;
+import com.example.STOLOTO.DTO.user.DeleteAccountRequest;
 import com.example.STOLOTO.DTO.user.PublicUserResponse;
 import com.example.STOLOTO.DTO.user.UpdateProfileRequest;
 import com.example.STOLOTO.DTO.user.UserResponse;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.ParticipationStatus;
+import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
 import com.example.STOLOTO.cache.CacheRegions;
 import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
+import com.example.STOLOTO.repository.NotificationRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.repository.UserRepository;
 import com.example.STOLOTO.security.CurrentUser;
+import com.example.STOLOTO.security.JwtService;
 
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
@@ -37,7 +42,12 @@ public class UserService {
     private final EventRepository events;
     private final OrganizationRepository organizations;
     private final ParticipationRepository participations;
+    private final NotificationRepository notifications;
     private final SportService sportService;
+    private final EventService eventService;
+    private final ParticipationService participationService;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
     private final PageCache cache;
@@ -85,6 +95,56 @@ public class UserService {
         u.setUpdatedAt(Instant.now());
         regions.userChanged(u.getId());
         return mapper.toUser(users.save(u));
+    }
+
+    /**
+     * Удаление аккаунта (DELETE /users/me). Строка users не удаляется: на неё ссылаются события,
+     * организации и журнал модерации (ON DELETE RESTRICT), а записи и обсуждения должны остаться
+     * в истории. Вместо этого аккаунт деактивируется и обезличивается:
+     * <ul>
+     *   <li>предстоящие опубликованные события пользователя отменяются, участники получают уведомление;</li>
+     *   <li>его активные записи отменяются, освободившиеся места уходят листу ожидания;</li>
+     *   <li>личные данные стираются, email освобождается для новой регистрации;</li>
+     *   <li>уведомления удаляются, текущий токен отзывается (остальные перестают работать из-за is_active).</li>
+     * </ul>
+     * Комментарии остаются и показываются от «Удалённого пользователя».
+     */
+    public void deleteMe(DeleteAccountRequest request) {
+        User u = currentUser.require();
+        if (!passwordEncoder.matches(request.password(), u.getPasswordHash())) {
+            throw ApiException.forbidden("Неверный пароль");
+        }
+        if (u.isDemo()) {
+            throw ApiException.forbidden("Демо-аккаунт удалить нельзя");
+        }
+        if (u.getRole() == Role.ADMIN && users.countByRoleAndActiveTrue(Role.ADMIN) <= 1) {
+            throw ApiException.conflict("LAST_ADMIN", "Нельзя удалить последнего администратора");
+        }
+        if (!organizations.findByOwnerIdOrderByCreatedAtDesc(u.getId()).isEmpty()) {
+            throw ApiException.conflict("HAS_ORGANIZATIONS",
+                    "Сначала передайте или удалите свои организации — у организации должен быть владелец");
+        }
+
+        events.findByOrganizerUserIdAndStatusOrderByStartsAtDesc(u.getId(), EventStatus.PUBLISHED).stream()
+                .filter(e -> !e.isPast())
+                .forEach(e -> eventService.cancel(e.getId(), "Организатор удалил аккаунт"));
+        participationService.cancelAllForUser(u.getId());
+        notifications.deleteByRecipientId(u.getId());
+
+        u.setActive(false);
+        u.setName("Удалённый пользователь");
+        u.setEmail("deleted+" + u.getId() + "@deleted.local");
+        // Не хеш ни одного пароля — войти по паролю невозможно
+        u.setPasswordHash("!deleted");
+        u.setAbout(null);
+        u.setCity(null);
+        u.setAvatarUrl(null);
+        u.setLevel(null);
+        u.getSportIds().clear();
+        u.setUpdatedAt(Instant.now());
+
+        currentUser.tokenId().ifPresent(jwtService::revoke);
+        regions.userChanged(u.getId());
     }
 
     /** События, где я организатор: созданные лично и от моих организаций. */

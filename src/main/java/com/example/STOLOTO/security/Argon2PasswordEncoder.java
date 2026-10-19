@@ -7,10 +7,6 @@ import de.mkammerer.argon2.Argon2;
 import de.mkammerer.argon2.Argon2Factory;
 import de.mkammerer.argon2.Argon2Factory.Argon2Types;
 
-/**
- * Новые пароли хешируются Argon2id (argon2-jvm). Хеши BCrypt ($2a$/$2b$/$2y$) из V09__seed_data
- * тоже проверяются, чтобы демо-пароли работали.
- */
 public class Argon2PasswordEncoder implements PasswordEncoder {
 
     private static final int ITERATIONS = 3;

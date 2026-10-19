@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.STOLOTO.DTO.auth.AuthResponse;
@@ -56,16 +55,19 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout() {
         authService.logout();
-        // Удаляем куки — выставляем Max-Age=0
-        ResponseCookie clear = ResponseCookie.from(COOKIE_NAME, "")
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearCookie().toString())
+                .build();
+    }
+
+    /** Cookie с Max-Age=0 — браузер удаляет JWT (logout, удаление аккаунта). */
+    static ResponseCookie clearCookie() {
+        return ResponseCookie.from(COOKIE_NAME, "")
                 .httpOnly(true)
                 .secure(true)
                 .path("/")
                 .sameSite("Strict")
                 .maxAge(0)
-                .build();
-        return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clear.toString())
                 .build();
     }
 
@@ -74,14 +76,13 @@ public class AuthController {
         return authService.me();
     }
 
-    // Строим куки с JWT токеном
     private ResponseCookie buildCookie(AuthResponse auth) {
         return ResponseCookie.from(COOKIE_NAME, auth.token())
-                .httpOnly(true)          // JS не может прочитать
-                .secure(true)            // только HTTPS
-                .path("/")               // для всех эндпоинтов
-                .sameSite("Strict")      // защита от CSRF
-                .maxAge(auth.expiresIn()) // живёт столько же сколько токен (24ч)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .sameSite("Strict")
+                .maxAge(auth.expiresIn())
                 .build();
     }
 }

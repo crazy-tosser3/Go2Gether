@@ -22,7 +22,6 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // Swagger — мягкие заголовки (грузит ресурсы с CDN)
         if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs")) {
             response.setHeader("X-Frame-Options", "SAMEORIGIN");
             response.setHeader("X-Content-Type-Options", "nosniff");
@@ -31,7 +30,6 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Все остальные запросы — максимальная защита
         response.setHeader("X-Frame-Options", "DENY");
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Strict-Transport-Security",

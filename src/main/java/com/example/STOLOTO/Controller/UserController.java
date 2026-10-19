@@ -2,6 +2,9 @@ package com.example.STOLOTO.Controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.STOLOTO.DTO.event.OrganizerEventResponse;
 import com.example.STOLOTO.DTO.participation.MyParticipationResponse;
+import com.example.STOLOTO.DTO.user.DeleteAccountRequest;
 import com.example.STOLOTO.DTO.user.PublicUserResponse;
 import com.example.STOLOTO.DTO.user.UpdateProfileRequest;
 import com.example.STOLOTO.DTO.user.UserResponse;
@@ -36,6 +40,14 @@ public class UserController {
     @PatchMapping("/me")
     public UserResponse updateMe(@Valid @RequestBody UpdateProfileRequest request) {
         return userService.updateMe(request);
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteAccountRequest request) {
+        userService.deleteMe(request);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, AuthController.clearCookie().toString())
+                .build();
     }
 
     @GetMapping("/me/events")

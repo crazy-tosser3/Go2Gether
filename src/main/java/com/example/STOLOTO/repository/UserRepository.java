@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -13,4 +14,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmailIgnoreCase(String email);
 
     List<User> findByDemoTrueOrderByIdAsc();
+
+    long countByRoleAndActiveTrue(Role role);
 }

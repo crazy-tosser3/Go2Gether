@@ -1,14 +1,53 @@
-version: '3.9'
-
 services:
-  app:
-    build: .
-    ports:
-      - "127.0.0.1:8080:8080"
-    env_file:
-      - .env
+  postgres:
+    image: postgres:18
+    container_name: StolotoHack
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 768m
+    environment:
+      POSTGRES_DB: UmirFlagman
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 787901
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d UmirFlagman"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7
+    container_name: StolotoHackRedis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: STOLOTO
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    env_file:
+      - docker-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
