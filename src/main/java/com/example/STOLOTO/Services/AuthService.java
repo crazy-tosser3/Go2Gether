@@ -31,7 +31,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthService {
 
-    /** Подписи демо-аккаунтов из V09__seed_data для экрана быстрого входа. */
     private static final Map<String, String> DEMO_DESCRIPTIONS = Map.of(
             "user@demo.local", "Обычный пользователь",
             "user2@demo.local", "Второй пользователь",

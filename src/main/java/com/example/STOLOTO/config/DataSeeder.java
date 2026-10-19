@@ -231,7 +231,7 @@ public class DataSeeder implements CommandLineRunner {
         evTableTennis = events.get(9);
         evBasket      = events.get(10);
 
-  
+
 
         // user2 → пробежка (OPEN → сразу CONFIRMED)
         partRepo.save(participation(evRun.getId(), userMaria.getId(),
