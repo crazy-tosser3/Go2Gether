@@ -3,15 +3,15 @@ package com.example.STOLOTO.DTO.admin;
 import java.time.Instant;
 
 import com.example.STOLOTO.DTO.user.UserShortResponse;
-import com.example.STOLOTO.Models.ModerationAction;
+import com.example.STOLOTO.Models.AuditAction;
 import com.example.STOLOTO.Models.ModerationTargetType;
 
 public record ModerationLogResponse(
-        String id,
+        Long id,
         UserShortResponse admin,
+        AuditAction action,
         ModerationTargetType targetType,
-        String targetId,
-        ModerationAction action,
+        Long targetId,
         String reason,
         Instant createdAt) {
 }

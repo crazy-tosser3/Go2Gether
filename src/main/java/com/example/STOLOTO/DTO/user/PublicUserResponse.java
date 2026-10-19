@@ -7,7 +7,7 @@ import com.example.STOLOTO.DTO.sport.SportResponse;
 import com.example.STOLOTO.Models.Level;
 
 public record PublicUserResponse(
-        String id,
+        Long id,
         String name,
         String avatarUrl,
         String city,

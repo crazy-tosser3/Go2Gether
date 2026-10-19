@@ -39,7 +39,7 @@ public class SportController {
     }
 
     @GetMapping("/{id}")
-    public SportDetailsResponse details(@PathVariable String id) {
+    public SportDetailsResponse details(@PathVariable Long id) {
         return sportService.details(id);
     }
 }

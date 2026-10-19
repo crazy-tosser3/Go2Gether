@@ -7,7 +7,7 @@ import com.example.STOLOTO.Models.Level;
 import com.example.STOLOTO.Models.Role;
 
 public record UserResponse(
-        String id,
+        Long id,
         String name,
         String email,
         Role role,
@@ -15,7 +15,7 @@ public record UserResponse(
         String city,
         String bio,
         Level level,
-        List<String> sportIds,
+        List<Long> sportIds,
         boolean isDemo,
         Instant createdAt) {
 }

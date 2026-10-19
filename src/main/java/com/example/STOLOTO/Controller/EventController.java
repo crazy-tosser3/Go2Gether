@@ -53,21 +53,22 @@ public class EventController {
     @GetMapping
     public PageResponse<EventShortResponse> search(
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) String sport,
+            @RequestParam(required = false) Long sport,
             @RequestParam(required = false) String city,
             @RequestParam(name = "date_from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(name = "date_to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) Level level,
             @RequestParam(name = "join_mode", required = false) JoinMode joinMode,
-            @RequestParam(required = false) String organizer,
+            @RequestParam(required = false) Long organizer,
+            @RequestParam(required = false) Long organization,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        var filter = new EventService.Filter(q, sport, city, dateFrom, dateTo, level, joinMode, organizer);
+        var filter = new EventService.Filter(q, sport, city, dateFrom, dateTo, level, joinMode, organizer, organization);
         return eventService.search(filter, page, size);
     }
 
     @GetMapping("/{id}")
-    public EventDetailsResponse get(@PathVariable String id) {
+    public EventDetailsResponse get(@PathVariable Long id) {
         return eventService.get(id);
     }
 
@@ -78,12 +79,12 @@ public class EventController {
     }
 
     @PatchMapping("/{id}")
-    public EventDetailsResponse update(@PathVariable String id, @Valid @RequestBody UpdateEventRequest request) {
+    public EventDetailsResponse update(@PathVariable Long id, @Valid @RequestBody UpdateEventRequest request) {
         return eventService.update(id, request);
     }
 
     @PostMapping("/{id}/cancel")
-    public EventDetailsResponse cancel(@PathVariable String id, @Valid @RequestBody ReasonRequest request) {
+    public EventDetailsResponse cancel(@PathVariable Long id, @Valid @RequestBody ReasonRequest request) {
         return eventService.cancel(id, request.reason());
     }
 
@@ -91,27 +92,27 @@ public class EventController {
 
     @PostMapping("/{id}/join")
     @ResponseStatus(HttpStatus.CREATED)
-    public JoinResponse join(@PathVariable String id, @Valid @RequestBody(required = false) JoinRequest request) {
+    public JoinResponse join(@PathVariable Long id, @Valid @RequestBody(required = false) JoinRequest request) {
         return participationService.join(id, request == null ? null : request.message());
     }
 
     @DeleteMapping("/{id}/join")
-    public ParticipationResponse leave(@PathVariable String id) {
+    public ParticipationResponse leave(@PathVariable Long id) {
         return participationService.leave(id);
     }
 
     @GetMapping("/{id}/my-participation")
-    public ParticipationResponse myParticipation(@PathVariable String id) {
+    public ParticipationResponse myParticipation(@PathVariable Long id) {
         return participationService.myParticipation(id);
     }
 
     @GetMapping("/{id}/participants")
-    public ParticipantsResponse participants(@PathVariable String id) {
+    public ParticipantsResponse participants(@PathVariable Long id) {
         return participationService.participants(id);
     }
 
     @GetMapping("/{id}/requests")
-    public List<ParticipantResponse> requests(@PathVariable String id,
+    public List<ParticipantResponse> requests(@PathVariable Long id,
             @RequestParam(required = false) ParticipationStatus status) {
         return participationService.requests(id, status);
     }
@@ -119,7 +120,7 @@ public class EventController {
     // обсуждение
 
     @GetMapping("/{id}/comments")
-    public PageResponse<CommentResponse> comments(@PathVariable String id,
+    public PageResponse<CommentResponse> comments(@PathVariable Long id,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         return commentService.list(id, page, size);
@@ -127,7 +128,7 @@ public class EventController {
 
     @PostMapping("/{id}/comments")
     @ResponseStatus(HttpStatus.CREATED)
-    public CommentResponse comment(@PathVariable String id, @Valid @RequestBody CreateCommentRequest request) {
+    public CommentResponse comment(@PathVariable Long id, @Valid @RequestBody CreateCommentRequest request) {
         return commentService.create(id, request);
     }
 }

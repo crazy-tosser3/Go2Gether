@@ -16,7 +16,7 @@ import jakarta.validation.constraints.Size;
 public record CreateEventRequest(
         @NotBlank @Size(max = 200) String title,
         @Size(max = 10000) String description,
-        String sportId,
+        Long sportId,
         @Size(max = 60) String sportName,
         @NotNull @Future Instant startsAt,
         Instant endsAt,
@@ -30,5 +30,5 @@ public record CreateEventRequest(
         @Size(max = 5000) String equipment,
         @NotNull JoinMode joinMode,
         @Min(1) Integer capacity,
-        String organizationId) {
+        Long organizationId) {
 }

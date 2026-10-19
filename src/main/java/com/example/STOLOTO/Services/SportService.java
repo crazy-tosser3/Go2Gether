@@ -1,20 +1,23 @@
 package com.example.STOLOTO.Services;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.sport.CreateSportRequest;
 import com.example.STOLOTO.DTO.sport.SportDetailsResponse;
 import com.example.STOLOTO.DTO.sport.SportResponse;
-import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.Sport;
 import com.example.STOLOTO.Models.SportCategory;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.SportRepository;
 import com.example.STOLOTO.security.CurrentUser;
@@ -22,54 +25,60 @@ import com.example.STOLOTO.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class SportService {
+
+    public static final String CACHE = "sports";
 
     private final SportRepository sports;
     private final EventRepository events;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
 
+    /** lower, trim, ё→е, схлопывание пробелов. */
     public static String normalize(String name) {
         return name.trim().toLowerCase(Locale.ROOT).replace('ё', 'е').replaceAll("\\s+", " ");
     }
 
+    /** Каталог/автодополнение. Результаты кэшируются в Redis по строке запроса. */
+    @Transactional(readOnly = true)
+    @Cacheable(cacheNames = CACHE, key = "#q == null ? '' : #q.trim().toLowerCase()")
     public List<SportResponse> search(String q) {
         String needle = q == null || q.isBlank() ? null : normalize(q);
-        return sports.findAll().stream()
+        return sports.findAllByOrderByCustomAscNameAsc().stream()
                 .filter(s -> needle == null || s.getNormalizedName().contains(needle))
-                .sorted(Comparator.comparing((Sport s) -> needle != null && !s.getNormalizedName().startsWith(needle))
-                        .thenComparing(Sport::isCustom)
-                        .thenComparing(Sport::getName))
+                .sorted(Comparator.comparing((Sport s) -> needle != null && !s.getNormalizedName().startsWith(needle)))
                 .map(mapper::toSport)
                 .toList();
     }
 
+    @CacheEvict(cacheNames = CACHE, allEntries = true)
     public SportResponse create(CreateSportRequest request) {
-        String userId = currentUser.require().getId();
+        Long userId = currentUser.require().getId();
         return mapper.toSport(findOrCreate(request.name(), request.category(), userId));
     }
 
-    public SportDetailsResponse details(String id) {
+    @Transactional(readOnly = true)
+    public SportDetailsResponse details(Long id) {
         Sport s = require(id);
-        long active = events.findBySportIdAndStatus(id, EventStatus.PUBLISHED).stream()
-                .filter(e -> !e.isPast())
-                .count();
+        long active = events.countBySportIdAndStatusAndStartsAtAfter(id, EventStatus.PUBLISHED, Instant.now());
         return new SportDetailsResponse(s.getId(), s.getName(), s.getCategory(), s.getIcon(), s.isCustom(), active);
     }
 
-    public Sport require(String id) {
+    public Sport require(Long id) {
         return sports.findById(id).orElseThrow(() -> ApiException.notFound("Направление не найдено"));
     }
 
-    public Sport findOrCreate(String name, SportCategory category, String createdBy) {
+    /** Дедуп по normalized_name: новое направление — новая строка в sports, без изменения кода. */
+    @CacheEvict(cacheNames = CACHE, allEntries = true)
+    public Sport findOrCreate(String name, SportCategory category, Long createdBy) {
         if (name == null || name.isBlank()) {
             throw ApiException.validation("name", "Название направления обязательно");
         }
         String normalized = normalize(name);
         return sports.findByNormalizedName(normalized).orElseGet(() -> {
             Sport s = new Sport();
-            s.setId(UUID.randomUUID().toString());
             s.setName(name.trim());
             s.setNormalizedName(normalized);
             s.setCategory(category == null ? SportCategory.OTHER : category);
@@ -80,12 +89,10 @@ public class SportService {
         });
     }
 
-    public List<String> validateIds(List<String> ids, String field) {
-        if (ids == null) {
-            return null;
-        }
-        List<String> distinct = ids.stream().distinct().toList();
-        for (String id : distinct) {
+    /** Все переданные id направлений должны существовать (иначе 422). */
+    public List<Long> validateIds(Collection<Long> ids, String field) {
+        List<Long> distinct = ids.stream().distinct().toList();
+        for (Long id : distinct) {
             if (id == null || !sports.existsById(id)) {
                 throw ApiException.validation(field, "Направление не найдено: " + id);
             }

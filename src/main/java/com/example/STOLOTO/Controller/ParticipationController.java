@@ -21,12 +21,12 @@ public class ParticipationController {
     private final ParticipationService participationService;
 
     @PostMapping("/{pid}/approve")
-    public ParticipationResponse approve(@PathVariable String pid) {
+    public ParticipationResponse approve(@PathVariable Long pid) {
         return participationService.approve(pid);
     }
 
     @PostMapping("/{pid}/reject")
-    public ParticipationResponse reject(@PathVariable String pid,
+    public ParticipationResponse reject(@PathVariable Long pid,
             @Valid @RequestBody(required = false) OptionalReasonRequest request) {
         return participationService.reject(pid, request == null ? null : request.reason());
     }

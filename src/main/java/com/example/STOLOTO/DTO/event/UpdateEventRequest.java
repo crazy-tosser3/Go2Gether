@@ -14,7 +14,7 @@ import jakarta.validation.constraints.Size;
 public record UpdateEventRequest(
         @Size(min = 1, max = 200) String title,
         @Size(max = 10000) String description,
-        String sportId,
+        Long sportId,
         @Size(max = 60) String sportName,
         @Future Instant startsAt,
         Instant endsAt,

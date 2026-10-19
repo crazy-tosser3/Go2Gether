@@ -1,18 +1,16 @@
 package com.example.STOLOTO.Services;
 
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.participation.JoinResponse;
 import com.example.STOLOTO.DTO.participation.ParticipantResponse;
 import com.example.STOLOTO.DTO.participation.ParticipantsResponse;
 import com.example.STOLOTO.DTO.participation.ParticipationResponse;
-import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.JoinMode;
@@ -21,6 +19,7 @@ import com.example.STOLOTO.Models.Participation;
 import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.security.CurrentUser;
@@ -28,6 +27,7 @@ import com.example.STOLOTO.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class ParticipationService {
 
@@ -38,9 +38,13 @@ public class ParticipationService {
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
 
-    public JoinResponse join(String eventId, String message) {
+    /**
+     * POST /events/{id}/join — логика со стр. 3 схемы. Строка события блокируется (SELECT ... FOR UPDATE),
+     * чтобы лимит мест не превысили параллельные записи.
+     */
+    public JoinResponse join(Long eventId, String message) {
         User me = currentUser.require();
-        Event e = eventService.require(eventId);
+        Event e = lockEvent(eventId);
         if (e.getStatus() != EventStatus.PUBLISHED) {
             throw EventService.unavailable(e);
         }
@@ -50,124 +54,137 @@ public class ParticipationService {
         if (mapper.isOrganizer(e, me.getId())) {
             throw ApiException.conflict("OWN_EVENT", "Нельзя записаться на своё событие");
         }
-        List<Participation> existing = participations.findByEventIdAndUserId(eventId, me.getId());
-        existing.stream().filter(p -> p.getStatus().isActive()).findFirst().ifPresent(p -> {
+        // UNIQUE(event_id, user_id): после rejected/cancelled переиспользуем ту же строку
+        Participation p = participations.findByEventIdAndUserId(eventId, me.getId()).orElse(null);
+        if (p != null && p.getStatus().isActive()) {
             throw ApiException.conflict("ALREADY_JOINED", "У вас уже есть активная запись",
-                    Map.of("participation_id", p.getId(), "status", p.getStatus().name().toLowerCase()));
-        });
-
-        Participation p = new Participation();
-        p.setId(UUID.randomUUID().toString());
-        p.setEventId(eventId);
-        p.setUserId(me.getId());
+                    Map.of("participation_id", p.getId().toString(), "status", p.getStatus().name().toLowerCase()));
+        }
+        Instant now = Instant.now();
+        if (p == null) {
+            p = new Participation();
+            p.setEventId(eventId);
+            p.setUserId(me.getId());
+            p.setCreatedAt(now);
+        }
         p.setMessage(message);
-        p.setCreatedAt(Instant.now());
+        p.setDecisionReason(null);
+        p.setDecidedAt(null);
+        p.setWaitlistPosition(null);
+        p.setUpdatedAt(now);
 
         String text;
         if (isFull(e)) {
-            p.setStatus(ParticipationStatus.WAITLISTED);
+            p.setStatus(ParticipationStatus.WAITLIST);
+            p.setWaitlistPosition(participations.maxWaitlistPosition(eventId) + 1);
             text = "Мест нет — вы в листе ожидания";
         } else if (e.getJoinMode() == JoinMode.OPEN) {
             p.setStatus(ParticipationStatus.CONFIRMED);
-            p.setDecidedAt(p.getCreatedAt());
+            p.setDecidedAt(now);
             text = "Вы записаны";
         } else {
             p.setStatus(ParticipationStatus.PENDING);
             text = "Заявка на рассмотрении";
-            notificationService.notify(e.getOrganizerUserId(), NotificationType.PARTICIPATION_REQUESTED,
-                    Map.of("event_id", eventId, "event_title", e.getTitle(), "participation_id", p.getId(),
-                            "user_name", me.getName()));
+            notificationService.notify(mapper.organizerRecipient(e), NotificationType.NEW_REGISTRATION,
+                    "Новая заявка", me.getName() + " хочет участвовать в «" + e.getTitle() + "»", eventId);
         }
         participations.save(p);
         var details = p.getStatus() == ParticipationStatus.CONFIRMED ? mapper.toEventDetails(e, me) : null;
         return new JoinResponse(text, mapper.toParticipation(p), details);
     }
 
-    public ParticipationResponse leave(String eventId) {
+    /** DELETE /events/{id}/join — отменить свою запись/заявку. */
+    public ParticipationResponse leave(Long eventId) {
         User me = currentUser.require();
-        Event e = eventService.require(eventId);
-        Participation p = participations.findByEventIdAndUserId(eventId, me.getId()).stream()
+        Event e = lockEvent(eventId);
+        Participation p = participations.findByEventIdAndUserId(eventId, me.getId())
                 .filter(x -> x.getStatus().isActive())
-                .findFirst()
                 .orElseThrow(() -> ApiException.notFound("Активная запись не найдена"));
         boolean freedSeat = p.getStatus() == ParticipationStatus.CONFIRMED;
         p.setStatus(ParticipationStatus.CANCELLED);
-        p.setDecidedAt(Instant.now());
-        participations.save(p);
+        p.setWaitlistPosition(null);
+        p.setUpdatedAt(Instant.now());
+        participations.flush();
         if (freedSeat) {
             promoteFromWaitlist(e);
         }
         return mapper.toParticipation(p);
     }
 
-    public ParticipationResponse myParticipation(String eventId) {
+    @Transactional(readOnly = true)
+    public ParticipationResponse myParticipation(Long eventId) {
         User me = currentUser.require();
         eventService.require(eventId);
-        Participation p = mapper.latestFor(participations.findByEventId(eventId), me.getId());
-        return p == null ? null : mapper.toParticipation(p);
+        return participations.findByEventIdAndUserId(eventId, me.getId()).map(mapper::toParticipation).orElse(null);
     }
 
-    public ParticipantsResponse participants(String eventId) {
+    /** Подтверждённые участники. Публично — имена и количество; организатору и админу — контакты. */
+    @Transactional(readOnly = true)
+    public ParticipantsResponse participants(Long eventId) {
         Event e = eventService.requireViewable(eventId);
         boolean privileged = currentUser.find()
                 .map(u -> u.getRole() == Role.ADMIN || mapper.isOrganizer(e, u.getId()))
                 .orElse(false);
-        var list = participations.findByEventId(eventId).stream()
-                .filter(p -> p.getStatus() == ParticipationStatus.CONFIRMED)
-                .sorted(Comparator.comparing(Participation::getCreatedAt))
+        var list = participations.findByEventIdAndStatusOrderByCreatedAtAsc(eventId, ParticipationStatus.CONFIRMED)
+                .stream()
                 .map(p -> mapper.toParticipant(p, privileged))
                 .toList();
         return new ParticipantsResponse(list.size(), e.getCapacity(), list);
     }
 
-    public List<ParticipantResponse> requests(String eventId, ParticipationStatus status) {
+    /** Заявки на рассмотрение: организатор (админ — только просмотр). */
+    @Transactional(readOnly = true)
+    public List<ParticipantResponse> requests(Long eventId, ParticipationStatus status) {
         User me = currentUser.require();
         Event e = eventService.require(eventId);
         if (me.getRole() != Role.ADMIN && !mapper.isOrganizer(e, me.getId())) {
             throw ApiException.forbidden("Вы не организатор этого мероприятия");
         }
         ParticipationStatus filter = status == null ? ParticipationStatus.PENDING : status;
-        return participations.findByEventId(eventId).stream()
-                .filter(p -> p.getStatus() == filter)
-                .sorted(Comparator.comparing(Participation::getCreatedAt))
+        return participations.findByEventIdAndStatusOrderByCreatedAtAsc(eventId, filter).stream()
                 .map(p -> mapper.toParticipant(p, true))
                 .toList();
     }
 
-    public ParticipationResponse approve(String participationId) {
+    public ParticipationResponse approve(Long participationId) {
         Decision d = decide(participationId);
         if (isFull(d.event())) {
             throw ApiException.conflict("NO_SEATS", "Мест нет");
         }
-        d.participation().setStatus(ParticipationStatus.CONFIRMED);
-        d.participation().setDecidedAt(Instant.now());
-        participations.save(d.participation());
-        notificationService.notify(d.participation().getUserId(), NotificationType.PARTICIPATION_APPROVED,
-                Map.of("event_id", d.event().getId(), "event_title", d.event().getTitle()));
-        return mapper.toParticipation(d.participation());
+        Participation p = d.participation();
+        p.setStatus(ParticipationStatus.CONFIRMED);
+        p.setDecidedAt(Instant.now());
+        p.setUpdatedAt(p.getDecidedAt());
+        notificationService.notify(p.getUserId(), NotificationType.REGISTRATION_CONFIRMED, "Заявка принята",
+                "Вы участник «" + d.event().getTitle() + "»", d.event().getId());
+        return mapper.toParticipation(p);
     }
 
-    public ParticipationResponse reject(String participationId, String reason) {
+    public ParticipationResponse reject(Long participationId, String reason) {
         Decision d = decide(participationId);
-        d.participation().setStatus(ParticipationStatus.REJECTED);
-        d.participation().setDecisionReason(reason);
-        d.participation().setDecidedAt(Instant.now());
-        participations.save(d.participation());
-        notificationService.notify(d.participation().getUserId(), NotificationType.PARTICIPATION_REJECTED,
-                reason == null
-                        ? Map.of("event_id", d.event().getId(), "event_title", d.event().getTitle())
-                        : Map.of("event_id", d.event().getId(), "event_title", d.event().getTitle(), "reason", reason));
-        return mapper.toParticipation(d.participation());
+        Participation p = d.participation();
+        p.setStatus(ParticipationStatus.REJECTED);
+        p.setDecisionReason(reason);
+        p.setDecidedAt(Instant.now());
+        p.setUpdatedAt(p.getDecidedAt());
+        notificationService.notify(p.getUserId(), NotificationType.REGISTRATION_REJECTED, "Заявка отклонена",
+                "Заявка на «" + d.event().getTitle() + "» отклонена" + (reason == null ? "" : ": " + reason),
+                d.event().getId());
+        return mapper.toParticipation(p);
     }
 
     private record Decision(Participation participation, Event event) {
     }
 
-    private Decision decide(String participationId) {
+    /** Общие проверки approve/reject: организатор → pending → событие активно. */
+    private Decision decide(Long participationId) {
         User me = currentUser.require();
         Participation p = participations.findById(participationId)
                 .orElseThrow(() -> ApiException.notFound("Заявка не найдена"));
-        Event e = eventService.requireOrganized(p.getEventId(), me);
+        Event e = lockEvent(p.getEventId());
+        if (!mapper.isOrganizer(e, me.getId())) {
+            throw ApiException.forbidden("Вы не организатор этого мероприятия");
+        }
         if (p.getStatus() != ParticipationStatus.PENDING) {
             throw ApiException.conflict("ALREADY_REVIEWED", "Заявка уже рассмотрена",
                     Map.of("status", p.getStatus().name().toLowerCase()));
@@ -181,30 +198,34 @@ public class ParticipationService {
         return new Decision(p, e);
     }
 
+    private Event lockEvent(Long eventId) {
+        return events.findByIdForUpdate(eventId).orElseThrow(() -> ApiException.notFound("Мероприятие не найдено"));
+    }
+
     private boolean isFull(Event e) {
         return e.getCapacity() != null && mapper.count(e.getId(), ParticipationStatus.CONFIRMED) >= e.getCapacity();
     }
 
+    /** Место освободилось: первый в листе ожидания → confirmed (open) или pending (approval). */
     private void promoteFromWaitlist(Event e) {
         if (e.getStatus() != EventStatus.PUBLISHED || e.isPast()) {
             return;
         }
-        participations.findByEventId(e.getId()).stream()
-                .filter(p -> p.getStatus() == ParticipationStatus.WAITLISTED)
-                .min(Comparator.comparing(Participation::getCreatedAt))
-                .ifPresent(p -> {
+        participations.findFirstByEventIdAndStatusOrderByWaitlistPositionAscCreatedAtAsc(e.getId(),
+                ParticipationStatus.WAITLIST).ifPresent(p -> {
+                    p.setWaitlistPosition(null);
+                    p.setUpdatedAt(Instant.now());
                     if (e.getJoinMode() == JoinMode.OPEN) {
                         p.setStatus(ParticipationStatus.CONFIRMED);
-                        p.setDecidedAt(Instant.now());
-                        notificationService.notify(p.getUserId(), NotificationType.PARTICIPATION_APPROVED,
-                                Map.of("event_id", e.getId(), "event_title", e.getTitle()));
+                        p.setDecidedAt(p.getUpdatedAt());
+                        notificationService.notify(p.getUserId(), NotificationType.WAITLIST_PROMOTED,
+                                "Место освободилось", "Вы участник «" + e.getTitle() + "»", e.getId());
                     } else {
                         p.setStatus(ParticipationStatus.PENDING);
-                        notificationService.notify(e.getOrganizerUserId(), NotificationType.PARTICIPATION_REQUESTED,
-                                Map.of("event_id", e.getId(), "event_title", e.getTitle(), "participation_id",
-                                        p.getId()));
+                        notificationService.notify(mapper.organizerRecipient(e), NotificationType.NEW_REGISTRATION,
+                                "Заявка из листа ожидания", "Освободилось место в «" + e.getTitle() + "»",
+                                e.getId());
                     }
-                    participations.save(p);
                 });
     }
 }

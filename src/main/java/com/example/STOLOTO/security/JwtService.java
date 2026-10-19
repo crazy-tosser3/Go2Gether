@@ -30,14 +30,14 @@ public class JwtService {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .id(jti)
                 .issuer(properties.issuer())
-                .subject(user.getId())
+                .subject(user.getId().toString())
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.ttl()))
                 .claim(ROLE_CLAIM, user.getRole().name())
                 .build();
         String token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
                 .getTokenValue();
-        tokenStore.save(jti, user.getId(), properties.ttl());
+        tokenStore.save(jti, user.getId().toString(), properties.ttl());
         return token;
     }
 

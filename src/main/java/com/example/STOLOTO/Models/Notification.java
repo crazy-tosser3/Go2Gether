@@ -1,13 +1,18 @@
 package com.example.STOLOTO.Models;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,14 +20,23 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@RedisHash("notifications")
+@Entity
+@Table(name = "notifications")
 public class Notification {
     @Id
-    private String id;
-    @Indexed
-    private String userId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long recipientId;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private NotificationType type;
-    private Map<String, String> payload = new HashMap<>();
+    private String title;
+    private String body;
+    private Long eventId;
+
+    @Column(name = "is_read")
     private boolean read;
     private Instant createdAt;
 }

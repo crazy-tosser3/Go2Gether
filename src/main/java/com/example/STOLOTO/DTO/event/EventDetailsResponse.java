@@ -11,7 +11,7 @@ import com.example.STOLOTO.Models.JoinMode;
 import com.example.STOLOTO.Models.Level;
 
 public record EventDetailsResponse(
-        String id,
+        Long id,
         String title,
         String description,
         SportResponse sport,

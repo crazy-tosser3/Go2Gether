@@ -29,7 +29,7 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping("/{id}")
-    public PublicUserResponse publicProfile(@PathVariable String id) {
+    public PublicUserResponse publicProfile(@PathVariable Long id) {
         return userService.publicProfile(id);
     }
 

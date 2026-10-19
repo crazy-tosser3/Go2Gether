@@ -6,7 +6,7 @@ import com.example.STOLOTO.DTO.user.UserShortResponse;
 import com.example.STOLOTO.Models.ParticipationStatus;
 
 public record ParticipantResponse(
-        String participationId,
+        Long participationId,
         UserShortResponse user,
         String email,
         ParticipationStatus status,

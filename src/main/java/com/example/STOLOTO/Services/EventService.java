@@ -3,12 +3,14 @@ package com.example.STOLOTO.Services;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.STOLOTO.DTO.admin.AdminEventDetailsResponse;
 import com.example.STOLOTO.DTO.common.PageResponse;
@@ -16,27 +18,26 @@ import com.example.STOLOTO.DTO.event.CreateEventRequest;
 import com.example.STOLOTO.DTO.event.EventDetailsResponse;
 import com.example.STOLOTO.DTO.event.EventShortResponse;
 import com.example.STOLOTO.DTO.event.UpdateEventRequest;
-import com.example.STOLOTO.exception.ApiException;
-import com.example.STOLOTO.Models.Comment;
+import com.example.STOLOTO.Models.AuditAction;
 import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.JoinMode;
 import com.example.STOLOTO.Models.Level;
-import com.example.STOLOTO.Models.ModerationAction;
-import com.example.STOLOTO.Models.ModerationTargetType;
 import com.example.STOLOTO.Models.NotificationType;
-import com.example.STOLOTO.Models.OrganizerType;
-import com.example.STOLOTO.Models.Participation;
+import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.CommentRepository;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class EventService {
 
@@ -46,57 +47,59 @@ public class EventService {
     private final SportService sportService;
     private final OrganizationService organizationService;
     private final NotificationService notificationService;
-    private final ModerationLogService moderationLog;
+    private final AuditService audit;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
 
-    public record Filter(String q, String sport, String city, LocalDate dateFrom, LocalDate dateTo, Level level,
-            JoinMode joinMode, String organizer) {
+    /** Фильтры ленты и админского поиска. organizer — id пользователя, organization — id организации. */
+    public record Filter(String q, Long sport, String city, LocalDate dateFrom, LocalDate dateTo, Level level,
+            JoinMode joinMode, Long organizer, Long organization) {
     }
 
-    // лента / карточка
+    // ---------- лента / карточка
 
+    /** Только published и starts_at > now, сортировка по дате. */
+    @Transactional(readOnly = true)
     public PageResponse<EventShortResponse> search(Filter f, Integer page, Integer size) {
-        var items = events.findByStatus(EventStatus.PUBLISHED).stream()
-                .filter(e -> !e.isPast())
-                .filter(e -> matches(e, f))
-                .sorted(Comparator.comparing(Event::getStartsAt))
-                .map(mapper::toEventShort)
-                .toList();
-        return PageResponse.of(items, page, size);
+        var pageable = PageResponse.pageable(page, size, Sort.by("startsAt"));
+        return PageResponse.of(events.findAll(spec(f, EventStatus.PUBLISHED, true), pageable), mapper::toEventShort);
     }
 
-    public EventDetailsResponse get(String id) {
+    @Transactional(readOnly = true)
+    public EventDetailsResponse get(Long id) {
         Event e = requireViewable(id);
         return mapper.toEventDetails(e, currentUser.find().orElse(null));
     }
 
-    public Event requireViewable(String id) {
+    /**
+     * Опубликованное событие видно всем. Снятое/удалённое/отменённое — админу, организатору
+     * и тем, кто записывался (с баннером-причиной); остальным — 410.
+     */
+    @Transactional(readOnly = true)
+    public Event requireViewable(Long id) {
         Event e = require(id);
         if (e.getStatus() == EventStatus.PUBLISHED) {
             return e;
         }
         User viewer = currentUser.find().orElse(null);
         if (viewer != null && (viewer.getRole() == Role.ADMIN || mapper.isOrganizer(e, viewer.getId())
-                || !participations.findByEventIdAndUserId(id, viewer.getId()).isEmpty())) {
+                || participations.findByEventIdAndUserId(id, viewer.getId()).isPresent())) {
             return e;
         }
         throw unavailable(e);
     }
 
-    // организатор
+    // ---------- организатор
 
     public EventDetailsResponse create(CreateEventRequest r) {
         User me = currentUser.require();
         Event e = new Event();
-        e.setId(UUID.randomUUID().toString());
-        e.setOrganizerUserId(me.getId());
-        if (r.organizationId() != null && !r.organizationId().isBlank()) {
+        // Организатор — ровно один: пользователь ЛИБО организация (chk_one_organizer)
+        if (r.organizationId() != null) {
             organizationService.requireApprovedOwned(r.organizationId(), me.getId());
-            e.setOrganizerType(OrganizerType.ORGANIZATION);
             e.setOrganizerOrgId(r.organizationId());
         } else {
-            e.setOrganizerType(OrganizerType.USER);
+            e.setOrganizerUserId(me.getId());
         }
         e.setSportId(resolveSport(r.sportId(), r.sportName(), me.getId()));
         if (r.endsAt() != null && !r.endsAt().isAfter(r.startsAt())) {
@@ -118,10 +121,11 @@ public class EventService {
         e.setCapacity(r.capacity());
         e.setStatus(EventStatus.PUBLISHED);
         e.setCreatedAt(Instant.now());
+        e.setUpdatedAt(e.getCreatedAt());
         return mapper.toEventDetails(events.save(e), me);
     }
 
-    public EventDetailsResponse update(String id, UpdateEventRequest r) {
+    public EventDetailsResponse update(Long id, UpdateEventRequest r) {
         User me = currentUser.require();
         Event e = requireOrganized(id, me);
         if (e.getStatus() != EventStatus.PUBLISHED) {
@@ -176,12 +180,12 @@ public class EventService {
             e.setCapacity(r.capacity());
         }
         e.setUpdatedAt(Instant.now());
-        events.save(e);
-        notifyParticipants(e, NotificationType.EVENT_UPDATED, null);
+        notifyParticipants(e, NotificationType.EVENT_UPDATED, "Событие изменено",
+                "Организатор изменил «" + e.getTitle() + "». Проверьте детали.");
         return mapper.toEventDetails(e, me);
     }
 
-    public EventDetailsResponse cancel(String id, String reason) {
+    public EventDetailsResponse cancel(Long id, String reason) {
         User me = currentUser.require();
         Event e = requireOrganized(id, me);
         if (e.getStatus() != EventStatus.PUBLISHED) {
@@ -189,72 +193,70 @@ public class EventService {
         }
         e.setStatus(EventStatus.CANCELLED);
         e.setCancelReason(reason);
-        events.save(e);
-        notifyParticipants(e, NotificationType.EVENT_CANCELLED, reason);
+        notifyParticipants(e, NotificationType.EVENT_CANCELLED, "Событие отменено",
+                "«" + e.getTitle() + "» отменено организатором. Причина: " + reason);
         return mapper.toEventDetails(e, me);
     }
 
-    // админ
+    // ---------- админ
 
-    public PageResponse<EventShortResponse> adminSearch(EventStatus status, String q, String organizer,
-            Integer page, Integer size) {
-        Filter f = new Filter(q, null, null, null, null, null, null, organizer);
-        var items = events.findAll().stream()
-                .filter(e -> status == null || e.getStatus() == status)
-                .filter(e -> matches(e, f))
-                .sorted(Comparator.comparing(Event::getStartsAt).reversed())
-                .map(mapper::toEventShort)
-                .toList();
-        return PageResponse.of(items, page, size);
+    @Transactional(readOnly = true)
+    public PageResponse<EventShortResponse> adminSearch(EventStatus status, String q, Long organizer,
+            Long organization, Integer page, Integer size) {
+        Filter f = new Filter(q, null, null, null, null, null, null, organizer, organization);
+        var pageable = PageResponse.pageable(page, size, Sort.by(Sort.Direction.DESC, "startsAt"));
+        return PageResponse.of(events.findAll(spec(f, status, false), pageable), mapper::toEventShort);
     }
 
-    public AdminEventDetailsResponse adminDetails(String id) {
+    @Transactional(readOnly = true)
+    public AdminEventDetailsResponse adminDetails(Long id) {
         User admin = currentUser.require();
         Event e = require(id);
-        var allParticipations = participations.findByEventId(id).stream()
-                .sorted(Comparator.comparing(Participation::getCreatedAt))
+        var allParticipations = participations.findByEventIdOrderByCreatedAtAsc(id).stream()
                 .map(p -> mapper.toParticipant(p, true))
                 .toList();
-        var eventComments = comments.findByEventId(id).stream()
-                .sorted(Comparator.comparing(Comment::getCreatedAt))
+        var eventComments = comments.findByEventIdOrderByCreatedAtAsc(id).stream()
                 .map(c -> mapper.toComment(c, e, true))
                 .toList();
         return new AdminEventDetailsResponse(mapper.toEventDetails(e, admin), mapper.userShort(e.getModeratedBy()),
                 e.getModeratedAt(), allParticipations, eventComments);
     }
 
-    public EventDetailsResponse unpublish(String id, String reason) {
+    public EventDetailsResponse unpublish(Long id, String reason) {
         Event e = require(id);
         if (e.getStatus() != EventStatus.PUBLISHED) {
             throw ApiException.conflict("INVALID_STATUS", "Снять можно только опубликованное событие");
         }
-        return moderate(e, EventStatus.UNPUBLISHED, ModerationAction.UNPUBLISH, NotificationType.EVENT_UNPUBLISHED,
-                reason);
+        return moderate(e, EventStatus.UNPUBLISHED, AuditAction.EVENT_UNPUBLISHED,
+                NotificationType.EVENT_UNPUBLISHED, "Событие снято с публикации", reason);
     }
 
-    public EventDetailsResponse delete(String id, String reason) {
+    public EventDetailsResponse delete(Long id, String reason) {
         Event e = require(id);
         if (e.getStatus() == EventStatus.DELETED) {
             throw ApiException.conflict("INVALID_STATUS", "Событие уже удалено");
         }
-        return moderate(e, EventStatus.DELETED, ModerationAction.DELETE, NotificationType.EVENT_DELETED, reason);
+        return moderate(e, EventStatus.DELETED, AuditAction.EVENT_DELETED, NotificationType.EVENT_DELETED,
+                "Событие удалено администратором", reason);
     }
 
-    public EventDetailsResponse restore(String id) {
+    public EventDetailsResponse restore(Long id) {
         Event e = require(id);
         if (e.getStatus() != EventStatus.UNPUBLISHED && e.getStatus() != EventStatus.DELETED) {
             throw ApiException.conflict("INVALID_STATUS", "Восстановить можно только снятое или удалённое событие");
         }
-        return moderate(e, EventStatus.PUBLISHED, ModerationAction.RESTORE, NotificationType.EVENT_RESTORED, null);
+        return moderate(e, EventStatus.PUBLISHED, AuditAction.EVENT_RESTORED, NotificationType.EVENT_RESTORED,
+                "Публикация восстановлена", null);
     }
 
-    // helpers
+    // ---------- helpers
 
-    public Event require(String id) {
+    public Event require(Long id) {
         return events.findById(id).orElseThrow(() -> ApiException.notFound("Мероприятие не найдено"));
     }
 
-    public Event requireOrganized(String id, User me) {
+    /** Событие, где текущий пользователь — организатор (админ тоже получает 403). */
+    public Event requireOrganized(Long id, User me) {
         Event e = require(id);
         if (!mapper.isOrganizer(e, me.getId())) {
             throw ApiException.forbidden("Вы не организатор этого мероприятия");
@@ -264,39 +266,31 @@ public class EventService {
 
     public static ApiException unavailable(Event e) {
         String reason = e.unavailableReason();
+        String status = e.getStatus().name().toLowerCase();
         return ApiException.gone("Мероприятие недоступно" + (reason == null ? "" : ": " + reason),
-                reason == null
-                        ? Map.of("status", e.getStatus().name().toLowerCase())
-                        : Map.of("status", e.getStatus().name().toLowerCase(), "reason", reason));
+                reason == null ? Map.of("status", status) : Map.of("status", status, "reason", reason));
     }
 
-    private EventDetailsResponse moderate(Event e, EventStatus status, ModerationAction action,
-            NotificationType notification, String reason) {
+    private EventDetailsResponse moderate(Event e, EventStatus status, AuditAction action,
+            NotificationType notification, String title, String reason) {
         User admin = currentUser.require();
         e.setStatus(status);
         e.setModerationReason(reason);
         e.setModeratedBy(admin.getId());
         e.setModeratedAt(Instant.now());
-        events.save(e);
-        moderationLog.log(admin.getId(), ModerationTargetType.EVENT, e.getId(), action, reason);
-        notificationService.notify(e.getOrganizerUserId(), notification, payload(e, reason));
+        audit.event(admin.getId(), e.getId(), action, reason);
+        notificationService.notify(mapper.organizerRecipient(e), notification, title,
+                "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason), e.getId());
         return mapper.toEventDetails(e, admin);
     }
 
-    private void notifyParticipants(Event e, NotificationType type, String reason) {
-        participations.findByEventId(e.getId()).stream()
-                .filter(p -> p.getStatus().isActive())
-                .forEach(p -> notificationService.notify(p.getUserId(), type, payload(e, reason)));
+    private void notifyParticipants(Event e, NotificationType type, String title, String body) {
+        participations.findByEventIdAndStatusInOrderByCreatedAtAsc(e.getId(), ParticipationStatus.ACTIVE)
+                .forEach(p -> notificationService.notify(p.getUserId(), type, title, body, e.getId()));
     }
 
-    private static Map<String, String> payload(Event e, String reason) {
-        return reason == null
-                ? Map.of("event_id", e.getId(), "event_title", e.getTitle())
-                : Map.of("event_id", e.getId(), "event_title", e.getTitle(), "reason", reason);
-    }
-
-    private String resolveSport(String sportId, String sportName, String userId) {
-        if (sportId != null && !sportId.isBlank()) {
+    private Long resolveSport(Long sportId, String sportName, Long userId) {
+        if (sportId != null) {
             return sportService.validateIds(List.of(sportId), "sport_id").getFirst();
         }
         if (sportName != null && !sportName.isBlank()) {
@@ -305,42 +299,48 @@ public class EventService {
         throw ApiException.validation("sport_id", "Укажите sport_id или sport_name");
     }
 
-    private boolean matches(Event e, Filter f) {
-        if (f.q() != null && !f.q().isBlank()) {
-            String needle = f.q().trim().toLowerCase();
-            boolean hit = e.getTitle().toLowerCase().contains(needle)
-                    || (e.getDescription() != null && e.getDescription().toLowerCase().contains(needle));
-            if (!hit) {
-                return false;
+    private static Specification<Event> spec(Filter f, EventStatus status, boolean upcomingOnly) {
+        return (root, query, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            if (status != null) {
+                p.add(cb.equal(root.get("status"), status));
             }
-        }
-        if (f.sport() != null && !f.sport().isBlank() && !f.sport().equals(e.getSportId())) {
-            return false;
-        }
-        if (f.city() != null && !f.city().isBlank()) {
-            String city = f.city().trim().toLowerCase();
-            boolean hit = (e.getCity() != null && e.getCity().equalsIgnoreCase(f.city().trim()))
-                    || (e.getAddress() != null && e.getAddress().toLowerCase().contains(city));
-            if (!hit) {
-                return false;
+            if (upcomingOnly) {
+                p.add(cb.greaterThan(root.get("startsAt"), Instant.now()));
             }
-        }
-        ZoneId zone = ZoneId.systemDefault();
-        if (f.dateFrom() != null && e.getStartsAt().isBefore(f.dateFrom().atStartOfDay(zone).toInstant())) {
-            return false;
-        }
-        if (f.dateTo() != null && !e.getStartsAt().isBefore(f.dateTo().plusDays(1).atStartOfDay(zone).toInstant())) {
-            return false;
-        }
-        if (f.level() != null && f.level() != e.getLevel()) {
-            return false;
-        }
-        if (f.joinMode() != null && f.joinMode() != e.getJoinMode()) {
-            return false;
-        }
-        if (f.organizer() != null && !f.organizer().isBlank()) {
-            return f.organizer().equals(e.getOrganizerUserId()) || f.organizer().equals(e.getOrganizerOrgId());
-        }
-        return true;
+            if (f.q() != null && !f.q().isBlank()) {
+                String like = "%" + f.q().trim().toLowerCase() + "%";
+                p.add(cb.or(cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("description"), "")), like)));
+            }
+            if (f.sport() != null) {
+                p.add(cb.equal(root.get("sportId"), f.sport()));
+            }
+            if (f.city() != null && !f.city().isBlank()) {
+                String city = f.city().trim().toLowerCase();
+                p.add(cb.or(cb.equal(cb.lower(root.get("city")), city),
+                        cb.like(cb.lower(root.get("address")), "%" + city + "%")));
+            }
+            ZoneId zone = ZoneId.systemDefault();
+            if (f.dateFrom() != null) {
+                p.add(cb.greaterThanOrEqualTo(root.get("startsAt"), f.dateFrom().atStartOfDay(zone).toInstant()));
+            }
+            if (f.dateTo() != null) {
+                p.add(cb.lessThan(root.get("startsAt"), f.dateTo().plusDays(1).atStartOfDay(zone).toInstant()));
+            }
+            if (f.level() != null) {
+                p.add(cb.equal(root.get("level"), f.level()));
+            }
+            if (f.joinMode() != null) {
+                p.add(cb.equal(root.get("joinMode"), f.joinMode()));
+            }
+            if (f.organizer() != null) {
+                p.add(cb.equal(root.get("organizerUserId"), f.organizer()));
+            }
+            if (f.organization() != null) {
+                p.add(cb.equal(root.get("organizerOrgId"), f.organization()));
+            }
+            return cb.and(p.toArray(Predicate[]::new));
+        };
     }
 }
