@@ -1,5 +1,6 @@
 package com.example.STOLOTO.Controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -7,10 +8,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.STOLOTO.DTO.admin.AdminEventDetailsResponse;
 import com.example.STOLOTO.DTO.admin.AdminOrganizationDetailsResponse;
+import com.example.STOLOTO.DTO.admin.CacheStatsResponse;
 import com.example.STOLOTO.DTO.admin.DashboardResponse;
 import com.example.STOLOTO.DTO.admin.ModerationLogResponse;
 import com.example.STOLOTO.DTO.comment.CommentResponse;
@@ -120,5 +123,18 @@ public class AdminController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         return auditService.list(targetType, page, size);
+    }
+
+    // ---------- кэш
+
+    @GetMapping("/cache/stats")
+    public CacheStatsResponse cacheStats() {
+        return adminService.cacheStats();
+    }
+
+    @PostMapping("/cache/flush")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void flushCache() {
+        adminService.flushCache();
     }
 }

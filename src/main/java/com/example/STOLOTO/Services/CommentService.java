@@ -2,6 +2,7 @@ package com.example.STOLOTO.Services;
 
 import java.time.Instant;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,11 +16,14 @@ import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.NotificationType;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.CommentRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @Transactional
@@ -33,13 +37,25 @@ public class CommentService {
     private final AuditService audit;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
+    private final CacheRegions regions;
 
     @Transactional(readOnly = true)
     public PageResponse<CommentResponse> list(Long eventId, Integer page, Integer size) {
-        Event e = eventService.requireViewable(eventId);
-        boolean admin = currentUser.isAdmin();
-        var result = comments.findByEventIdOrderByCreatedAtAsc(eventId, PageResponse.pageable(page, size, Sort.unsorted()));
-        return PageResponse.of(result, c -> mapper.toComment(c, e, admin));
+        eventService.requireViewableCard(eventId);
+        var pageable = PageResponse.pageable(page, size, Sort.unsorted());
+        if (currentUser.isAdmin()) {
+            return load(eventId, pageable, true); // админ видит причины скрытия — мимо кэша
+        }
+        return cache.get(CacheRegions.comments(eventId), "p" + pageable.getPageNumber() + ":" + pageable.getPageSize(),
+                CacheRegions.COMMENTS_TTL, new TypeReference<PageResponse<CommentResponse>>() {},
+                () -> load(eventId, pageable, false));
+    }
+
+    private PageResponse<CommentResponse> load(Long eventId, Pageable pageable, boolean admin) {
+        Event e = eventService.require(eventId);
+        return PageResponse.of(comments.findByEventIdOrderByCreatedAtAsc(eventId, pageable),
+                c -> mapper.toComment(c, e, admin));
     }
 
     public CommentResponse create(Long eventId, CreateCommentRequest r) {
@@ -66,6 +82,7 @@ public class CommentService {
         c.setText(r.text().trim());
         c.setCreatedAt(Instant.now());
         comments.save(c);
+        regions.commentsChanged(eventId);
         if (parent != null && !parent.getAuthorId().equals(me.getId())) {
             notificationService.notify(parent.getAuthorId(), NotificationType.COMMENT_REPLY, "Новый ответ",
                     me.getName() + " ответил(а) в обсуждении «" + e.getTitle() + "»", eventId);
@@ -80,11 +97,14 @@ public class CommentService {
         }
         c.setText(text.trim());
         c.setUpdatedAt(Instant.now());
+        regions.commentsChanged(c.getEventId());
         return mapper.toComment(c, eventService.require(c.getEventId()), false);
     }
 
     public void delete(Long commentId) {
-        comments.delete(requireOwn(commentId));
+        Comment c = requireOwn(commentId);
+        comments.delete(c);
+        regions.commentsChanged(c.getEventId());
     }
 
     public CommentResponse hide(Long commentId, String reason) {
@@ -94,6 +114,7 @@ public class CommentService {
         c.setHiddenReason(reason);
         c.setHiddenBy(admin.getId());
         c.setHiddenAt(Instant.now());
+        regions.commentsChanged(c.getEventId());
         audit.comment(admin.getId(), commentId, AuditAction.COMMENT_HIDDEN, reason);
         return mapper.toComment(c, eventService.require(c.getEventId()), true);
     }

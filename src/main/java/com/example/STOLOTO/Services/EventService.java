@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.STOLOTO.DTO.admin.AdminEventDetailsResponse;
 import com.example.STOLOTO.DTO.common.PageResponse;
 import com.example.STOLOTO.DTO.event.CreateEventRequest;
+import com.example.STOLOTO.DTO.event.EventCard;
 import com.example.STOLOTO.DTO.event.EventDetailsResponse;
 import com.example.STOLOTO.DTO.event.EventShortResponse;
 import com.example.STOLOTO.DTO.event.UpdateEventRequest;
@@ -27,6 +28,8 @@ import com.example.STOLOTO.Models.NotificationType;
 import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.CommentRepository;
 import com.example.STOLOTO.repository.EventRepository;
@@ -34,6 +37,7 @@ import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import jakarta.persistence.criteria.Predicate;
+import tools.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -50,10 +54,20 @@ public class EventService {
     private final AuditService audit;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
+    private final CacheRegions regions;
 
     /** Фильтры ленты и админского поиска. organizer — id пользователя, organization — id организации. */
     public record Filter(String q, Long sport, String city, LocalDate dateFrom, LocalDate dateTo, Level level,
             JoinMode joinMode, Long organizer, Long organization) {
+
+        /** Ключ кэша: регистр и пробелы в q не плодят разные записи. */
+        String cacheKey() {
+            String query = q == null || q.isBlank() ? "" : q.trim().toLowerCase();
+            String c = city == null || city.isBlank() ? "" : city.trim().toLowerCase();
+            return "q=" + query + "|s=" + sport + "|c=" + c + "|from=" + dateFrom + "|to=" + dateTo + "|l=" + level
+                    + "|j=" + joinMode + "|u=" + organizer + "|o=" + organization;
+        }
     }
 
     // ---------- лента / карточка
@@ -62,13 +76,24 @@ public class EventService {
     @Transactional(readOnly = true)
     public PageResponse<EventShortResponse> search(Filter f, Integer page, Integer size) {
         var pageable = PageResponse.pageable(page, size, Sort.by("startsAt"));
-        return PageResponse.of(events.findAll(spec(f, EventStatus.PUBLISHED, true), pageable), mapper::toEventShort);
+        String key = f.cacheKey() + "|p=" + pageable.getPageNumber() + "|n=" + pageable.getPageSize();
+        return cache.get(CacheRegions.FEED, key, CacheRegions.FEED_TTL,
+                new TypeReference<PageResponse<EventShortResponse>>() {},
+                () -> PageResponse.of(events.findAll(spec(f, EventStatus.PUBLISHED, true), pageable),
+                        mapper::toEventShort));
     }
 
     @Transactional(readOnly = true)
     public EventDetailsResponse get(Long id) {
-        Event e = requireViewable(id);
-        return mapper.toEventDetails(e, currentUser.find().orElse(null));
+        EventCard card = requireViewableCard(id);
+        return mapper.personalize(card, currentUser.find().orElse(null));
+    }
+
+    /** Общая карточка события из кэша (на промахе — из БД). */
+    @Transactional(readOnly = true)
+    public EventCard card(Long id) {
+        return cache.get(CacheRegions.event(id), "card", CacheRegions.EVENT_TTL, new TypeReference<EventCard>() {},
+                () -> mapper.toEventCard(require(id)));
     }
 
     /**
@@ -76,16 +101,17 @@ public class EventService {
      * и тем, кто записывался (с баннером-причиной); остальным — 410.
      */
     @Transactional(readOnly = true)
-    public Event requireViewable(Long id) {
-        Event e = require(id);
-        if (e.getStatus() == EventStatus.PUBLISHED) {
-            return e;
+    public EventCard requireViewableCard(Long id) {
+        EventCard card = card(id);
+        if (card.full().status() == EventStatus.PUBLISHED) {
+            return card;
         }
         User viewer = currentUser.find().orElse(null);
-        if (viewer != null && (viewer.getRole() == Role.ADMIN || mapper.isOrganizer(e, viewer.getId())
+        if (viewer != null && (viewer.getRole() == Role.ADMIN || card.isOrganizer(viewer.getId())
                 || participations.findByEventIdAndUserId(id, viewer.getId()).isPresent())) {
-            return e;
+            return card;
         }
+        Event e = require(id);
         throw unavailable(e);
     }
 
@@ -122,7 +148,9 @@ public class EventService {
         e.setStatus(EventStatus.PUBLISHED);
         e.setCreatedAt(Instant.now());
         e.setUpdatedAt(e.getCreatedAt());
-        return mapper.toEventDetails(events.save(e), me);
+        events.save(e);
+        regions.eventChanged(e);
+        return mapper.toEventDetails(e, me);
     }
 
     public EventDetailsResponse update(Long id, UpdateEventRequest r) {
@@ -180,6 +208,7 @@ public class EventService {
             e.setCapacity(r.capacity());
         }
         e.setUpdatedAt(Instant.now());
+        regions.eventChanged(e);
         notifyParticipants(e, NotificationType.EVENT_UPDATED, "Событие изменено",
                 "Организатор изменил «" + e.getTitle() + "». Проверьте детали.");
         return mapper.toEventDetails(e, me);
@@ -193,6 +222,7 @@ public class EventService {
         }
         e.setStatus(EventStatus.CANCELLED);
         e.setCancelReason(reason);
+        regions.eventChanged(e);
         notifyParticipants(e, NotificationType.EVENT_CANCELLED, "Событие отменено",
                 "«" + e.getTitle() + "» отменено организатором. Причина: " + reason);
         return mapper.toEventDetails(e, me);
@@ -278,6 +308,7 @@ public class EventService {
         e.setModerationReason(reason);
         e.setModeratedBy(admin.getId());
         e.setModeratedAt(Instant.now());
+        regions.eventChanged(e);
         audit.event(admin.getId(), e.getId(), action, reason);
         notificationService.notify(mapper.organizerRecipient(e), notification, title,
                 "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason), e.getId());

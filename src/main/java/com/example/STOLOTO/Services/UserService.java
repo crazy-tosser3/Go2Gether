@@ -16,6 +16,8 @@ import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
@@ -24,6 +26,7 @@ import com.example.STOLOTO.repository.UserRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @Transactional
@@ -37,9 +40,16 @@ public class UserService {
     private final SportService sportService;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
+    private final CacheRegions regions;
 
     @Transactional(readOnly = true)
     public PublicUserResponse publicProfile(Long id) {
+        return cache.get(CacheRegions.user(id), "public", CacheRegions.USER_TTL,
+                new TypeReference<PublicUserResponse>() {}, () -> loadPublicProfile(id));
+    }
+
+    private PublicUserResponse loadPublicProfile(Long id) {
         User u = users.findById(id).filter(User::isActive)
                 .orElseThrow(() -> ApiException.notFound("Пользователь не найден"));
         var created = events.findByOrganizerUserIdAndStatusOrderByStartsAtDesc(id, EventStatus.PUBLISHED).stream()
@@ -73,6 +83,7 @@ public class UserService {
             u.setLevel(r.level());
         }
         u.setUpdatedAt(Instant.now());
+        regions.userChanged(u.getId());
         return mapper.toUser(users.save(u));
     }
 

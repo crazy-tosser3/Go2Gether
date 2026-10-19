@@ -13,4 +13,6 @@ public interface OrganizationRepository extends JpaRepository<Organization, Long
     List<Organization> findByOwnerIdOrderByCreatedAtDesc(Long ownerId);
 
     long countByStatus(OrganizationStatus status);
+
+    boolean existsByIdAndOwnerId(Long id, Long ownerId);
 }

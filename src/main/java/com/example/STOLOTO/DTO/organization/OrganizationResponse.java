@@ -6,7 +6,6 @@ import com.example.STOLOTO.DTO.user.UserShortResponse;
 import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Models.OrganizationType;
 
-/** reject_reason / decided_at заполняются только для владельца и админа. */
 public record OrganizationResponse(
         Long id,
         String name,

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import com.example.STOLOTO.DTO.admin.ModerationLogResponse;
 import com.example.STOLOTO.DTO.comment.CommentResponse;
+import com.example.STOLOTO.DTO.event.EventCard;
 import com.example.STOLOTO.DTO.event.EventDetailsResponse;
 import com.example.STOLOTO.DTO.event.EventShortResponse;
 import com.example.STOLOTO.DTO.event.OrganizerResponse;
@@ -148,27 +149,37 @@ public class DtoMapper {
 
     /** Карточка события глазами viewer (null — гость). */
     public EventDetailsResponse toEventDetails(Event e, User viewer) {
-        Long viewerId = viewer == null ? null : viewer.getId();
-        boolean organizer = isOrganizer(e, viewerId);
-        boolean admin = viewer != null && viewer.getRole() == Role.ADMIN;
+        return personalize(toEventCard(e), viewer);
+    }
 
-        List<Participation> confirmed =
+    /** Общая для всех зрителей карточка (кладётся в кэш): полная информация, без «моей записи». */
+    public EventCard toEventCard(Event e) {
+        var confirmed =
                 participations.findByEventIdAndStatusOrderByCreatedAtAsc(e.getId(), ParticipationStatus.CONFIRMED);
-        Participation mine = viewerId == null
-                ? null
-                : participations.findByEventIdAndUserId(e.getId(), viewerId).orElse(null);
-        boolean confirmedParticipant = mine != null && mine.getStatus() == ParticipationStatus.CONFIRMED;
-        boolean fullInfo = organizer || admin || confirmedParticipant;
-
-        return new EventDetailsResponse(e.getId(), e.getTitle(), e.getDescription(), sport(e.getSportId()),
-                organizer(e), fullInfo ? organizerContacts(e) : null, e.getStartsAt(), e.getEndsAt(), e.getCity(),
-                e.getAddress(), fullInfo ? e.getLocationNote() : null, fullInfo ? e.getLat() : null,
-                fullInfo ? e.getLng() : null, e.getLevel(), e.getRequirements(), e.getEquipment(), e.getJoinMode(),
-                e.getCapacity(), confirmed.size(),
+        var full = new EventDetailsResponse(e.getId(), e.getTitle(), e.getDescription(), sport(e.getSportId()),
+                organizer(e), organizerContacts(e), e.getStartsAt(), e.getEndsAt(), e.getCity(), e.getAddress(),
+                e.getLocationNote(), e.getLat(), e.getLng(), e.getLevel(), e.getRequirements(), e.getEquipment(),
+                e.getJoinMode(), e.getCapacity(), confirmed.size(),
                 confirmed.stream().map(p -> userShort(p.getUserId())).toList(),
                 e.getStatus(), e.getStatus() == EventStatus.PUBLISHED ? null : e.unavailableReason(),
-                e.isPast(), e.isEdited(), organizer,
-                mine == null ? null : toParticipation(mine), e.getCreatedAt(), e.getUpdatedAt());
+                e.isPast(), e.isEdited(), false, null, e.getCreatedAt(), e.getUpdatedAt());
+        Long ownerId = e.getOrganizerOrgId() == null
+                ? null
+                : organizations.findById(e.getOrganizerOrgId()).map(Organization::getOwnerId).orElse(null);
+        return new EventCard(full, e.getOrganizerUserId(), ownerId);
+    }
+
+    /** Наложить на общую карточку данные конкретного зрителя (1 запрос — его запись на событие). */
+    public EventDetailsResponse personalize(EventCard card, User viewer) {
+        Long viewerId = viewer == null ? null : viewer.getId();
+        boolean organizer = card.isOrganizer(viewerId);
+        boolean admin = viewer != null && viewer.getRole() == Role.ADMIN;
+        Participation mine = viewerId == null
+                ? null
+                : participations.findByEventIdAndUserId(card.full().id(), viewerId).orElse(null);
+        boolean confirmedParticipant = mine != null && mine.getStatus() == ParticipationStatus.CONFIRMED;
+        return card.full().forViewer(organizer || admin || confirmedParticipant, organizer,
+                mine == null ? null : toParticipation(mine));
     }
 
     // ---------- participations

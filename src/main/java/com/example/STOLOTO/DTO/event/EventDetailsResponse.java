@@ -39,4 +39,12 @@ public record EventDetailsResponse(
         ParticipationResponse myParticipation,
         Instant createdAt,
         Instant updatedAt) {
+            
+    public EventDetailsResponse forViewer(boolean fullInfo, boolean organizer, ParticipationResponse mine) {
+        return new EventDetailsResponse(id, title, description, sport, this.organizer,
+                fullInfo ? organizerContacts : null, startsAt, endsAt, city, address,
+                fullInfo ? locationNote : null, fullInfo ? lat : null, fullInfo ? lng : null, level, requirements,
+                equipment, joinMode, capacity, confirmedCount, participants, status, unavailableReason, isPast,
+                isEdited, organizer, mine, createdAt, updatedAt);
+    }
 }

@@ -17,12 +17,15 @@ import com.example.STOLOTO.DTO.sport.SportResponse;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.Sport;
 import com.example.STOLOTO.Models.SportCategory;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.SportRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @Transactional
@@ -35,6 +38,7 @@ public class SportService {
     private final EventRepository events;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
 
     /** lower, trim, ё→е, схлопывание пробелов. */
     public static String normalize(String name) {
@@ -61,6 +65,11 @@ public class SportService {
 
     @Transactional(readOnly = true)
     public SportDetailsResponse details(Long id) {
+        return cache.get(CacheRegions.SPORT_STATS, String.valueOf(id), CacheRegions.SPORT_STATS_TTL,
+                new TypeReference<SportDetailsResponse>() {}, () -> loadDetails(id));
+    }
+
+    private SportDetailsResponse loadDetails(Long id) {
         Sport s = require(id);
         long active = events.countBySportIdAndStatusAndStartsAtAfter(id, EventStatus.PUBLISHED, Instant.now());
         return new SportDetailsResponse(s.getId(), s.getName(), s.getCategory(), s.getIcon(), s.isCustom(), active);

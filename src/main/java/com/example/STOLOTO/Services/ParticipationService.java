@@ -19,12 +19,15 @@ import com.example.STOLOTO.Models.Participation;
 import com.example.STOLOTO.Models.ParticipationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @Transactional
@@ -37,6 +40,8 @@ public class ParticipationService {
     private final NotificationService notificationService;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
+    private final CacheRegions regions;
 
     /**
      * POST /events/{id}/join — логика со стр. 3 схемы. Строка события блокируется (SELECT ... FOR UPDATE),
@@ -89,6 +94,7 @@ public class ParticipationService {
                     "Новая заявка", me.getName() + " хочет участвовать в «" + e.getTitle() + "»", eventId);
         }
         participations.save(p);
+        regions.eventChanged(e);
         var details = p.getStatus() == ParticipationStatus.CONFIRMED ? mapper.toEventDetails(e, me) : null;
         return new JoinResponse(text, mapper.toParticipation(p), details);
     }
@@ -105,6 +111,7 @@ public class ParticipationService {
         p.setWaitlistPosition(null);
         p.setUpdatedAt(Instant.now());
         participations.flush();
+        regions.eventChanged(e);
         if (freedSeat) {
             promoteFromWaitlist(e);
         }
@@ -121,15 +128,25 @@ public class ParticipationService {
     /** Подтверждённые участники. Публично — имена и количество; организатору и админу — контакты. */
     @Transactional(readOnly = true)
     public ParticipantsResponse participants(Long eventId) {
-        Event e = eventService.requireViewable(eventId);
+        var card = eventService.requireViewableCard(eventId);
         boolean privileged = currentUser.find()
-                .map(u -> u.getRole() == Role.ADMIN || mapper.isOrganizer(e, u.getId()))
+                .map(u -> u.getRole() == Role.ADMIN || card.isOrganizer(u.getId()))
                 .orElse(false);
+        if (privileged) {
+            return loadParticipants(eventId, card.full().capacity(), true);
+        }
+        // Публичный список (имена и количество) одинаков для всех — кэшируем
+        return cache.get(CacheRegions.event(eventId), "participants", CacheRegions.PARTICIPANTS_TTL,
+                new TypeReference<ParticipantsResponse>() {},
+                () -> loadParticipants(eventId, card.full().capacity(), false));
+    }
+
+    private ParticipantsResponse loadParticipants(Long eventId, Integer capacity, boolean withContacts) {
         var list = participations.findByEventIdAndStatusOrderByCreatedAtAsc(eventId, ParticipationStatus.CONFIRMED)
                 .stream()
-                .map(p -> mapper.toParticipant(p, privileged))
+                .map(p -> mapper.toParticipant(p, withContacts))
                 .toList();
-        return new ParticipantsResponse(list.size(), e.getCapacity(), list);
+        return new ParticipantsResponse(list.size(), capacity, list);
     }
 
     /** Заявки на рассмотрение: организатор (админ — только просмотр). */
@@ -155,6 +172,7 @@ public class ParticipationService {
         p.setStatus(ParticipationStatus.CONFIRMED);
         p.setDecidedAt(Instant.now());
         p.setUpdatedAt(p.getDecidedAt());
+        regions.eventChanged(d.event());
         notificationService.notify(p.getUserId(), NotificationType.REGISTRATION_CONFIRMED, "Заявка принята",
                 "Вы участник «" + d.event().getTitle() + "»", d.event().getId());
         return mapper.toParticipation(p);
@@ -167,6 +185,7 @@ public class ParticipationService {
         p.setDecisionReason(reason);
         p.setDecidedAt(Instant.now());
         p.setUpdatedAt(p.getDecidedAt());
+        regions.eventChanged(d.event());
         notificationService.notify(p.getUserId(), NotificationType.REGISTRATION_REJECTED, "Заявка отклонена",
                 "Заявка на «" + d.event().getTitle() + "» отклонена" + (reason == null ? "" : ": " + reason),
                 d.event().getId());

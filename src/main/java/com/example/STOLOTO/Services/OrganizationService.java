@@ -22,6 +22,8 @@ import com.example.STOLOTO.Models.Organization;
 import com.example.STOLOTO.Models.OrganizationStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
+import com.example.STOLOTO.cache.CacheRegions;
+import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
@@ -29,6 +31,7 @@ import com.example.STOLOTO.repository.UserRepository;
 import com.example.STOLOTO.security.CurrentUser;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @Transactional
@@ -42,6 +45,8 @@ public class OrganizationService {
     private final AuditService audit;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    private final PageCache cache;
+    private final CacheRegions regions;
 
     // ---------- владелец (у одного владельца может быть несколько организаций)
 
@@ -60,7 +65,9 @@ public class OrganizationService {
         o.setStatus(OrganizationStatus.PENDING);
         o.setCreatedAt(Instant.now());
         o.setUpdatedAt(o.getCreatedAt());
-        return mapper.toOrganization(organizations.save(o), true);
+        organizations.save(o);
+        regions.organizationChanged(o.getId());
+        return mapper.toOrganization(o, true);
     }
 
     @Transactional(readOnly = true)
@@ -98,6 +105,7 @@ public class OrganizationService {
             o.setContacts(r.contacts());
         }
         o.setUpdatedAt(Instant.now());
+        regions.organizationChanged(id);
         return mapper.toOrganization(o, true);
     }
 
@@ -111,6 +119,7 @@ public class OrganizationService {
         o.setDecidedBy(null);
         o.setDecidedAt(null);
         o.setUpdatedAt(Instant.now());
+        regions.organizationChanged(id);
         return mapper.toOrganization(o, true);
     }
 
@@ -124,21 +133,52 @@ public class OrganizationService {
                 .and(containsIgnoreCase("sportsDescription", sport))
                 .and(equalsIgnoreCase("city", city));
         var pageable = PageResponse.pageable(page, size, Sort.by("name"));
-        return PageResponse.of(organizations.findAll(spec, pageable), o -> mapper.toOrganization(o, false));
+        String key = "q=" + norm(q) + "|s=" + norm(sport) + "|c=" + norm(city) + "|p=" + pageable.getPageNumber()
+                + "|n=" + pageable.getPageSize();
+        return cache.get(CacheRegions.ORGS, key, CacheRegions.ORG_TTL,
+                new TypeReference<PageResponse<OrganizationResponse>>() {},
+                () -> PageResponse.of(organizations.findAll(spec, pageable), o -> mapper.toOrganization(o, false)));
     }
 
     @Transactional(readOnly = true)
     public OrganizationResponse get(Long id) {
-        Organization o = requireVisible(id);
-        return mapper.toOrganization(o, isPrivileged(o));
+        if (viewerIsPrivileged(id)) {
+            return mapper.toOrganization(require(id), true);
+        }
+        // Публичная страница одинакова для всех гостей и пользователей — кэшируем
+        return cache.get(CacheRegions.org(id), "public", CacheRegions.ORG_TTL,
+                new TypeReference<OrganizationResponse>() {},
+                () -> mapper.toOrganization(requireVisible(id), false));
     }
 
     @Transactional(readOnly = true)
     public List<EventShortResponse> events(Long id) {
-        requireVisible(id);
+        if (viewerIsPrivileged(id)) {
+            return loadEvents(id);
+        }
+        return cache.get(CacheRegions.org(id), "events", CacheRegions.ORG_TTL,
+                new TypeReference<List<EventShortResponse>>() {}, () -> {
+                    requireVisible(id);
+                    return loadEvents(id);
+                });
+    }
+
+    private List<EventShortResponse> loadEvents(Long id) {
+        require(id);
         return events.findByOrganizerOrgIdAndStatusOrderByStartsAtAsc(id, EventStatus.PUBLISHED).stream()
                 .map(mapper::toEventShort)
                 .toList();
+    }
+
+    /** Админ или владелец — им нужна непубличная версия (статус, причина отклонения). */
+    private boolean viewerIsPrivileged(Long orgId) {
+        return currentUser.find()
+                .map(u -> u.getRole() == Role.ADMIN || organizations.existsByIdAndOwnerId(orgId, u.getId()))
+                .orElse(false);
+    }
+
+    private static String norm(String s) {
+        return s == null || s.isBlank() ? "" : s.trim().toLowerCase();
     }
 
     /** Для POST /events и комментариев от имени организации: владелец + approved, иначе 403. */
@@ -183,6 +223,7 @@ public class OrganizationService {
         o.setDecidedBy(admin.getId());
         o.setDecidedAt(Instant.now());
         o.setUpdatedAt(o.getDecidedAt());
+        regions.organizationChanged(id);
         audit.organization(admin.getId(), id, AuditAction.ORG_APPROVED, null);
         notificationService.notify(o.getOwnerId(), NotificationType.ORG_APPROVED, "Организация допущена",
                 "«" + o.getName() + "» одобрена: страница опубликована, можно создавать события.", null);
@@ -197,6 +238,7 @@ public class OrganizationService {
         o.setDecidedBy(admin.getId());
         o.setDecidedAt(Instant.now());
         o.setUpdatedAt(o.getDecidedAt());
+        regions.organizationChanged(id);
         audit.organization(admin.getId(), id, AuditAction.ORG_REJECTED, reason);
         notificationService.notify(o.getOwnerId(), NotificationType.ORG_REJECTED, "Заявка организации отклонена",
                 "«" + o.getName() + "»: " + reason, null);

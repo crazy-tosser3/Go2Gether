@@ -4,7 +4,6 @@ import com.example.STOLOTO.Models.OrganizationType;
 
 import jakarta.validation.constraints.Size;
 
-/** PATCH: null — поле не меняется. */
 public record UpdateOrganizationRequest(
         @Size(min = 1, max = 200) String name,
         @Size(max = 5000) String description,
