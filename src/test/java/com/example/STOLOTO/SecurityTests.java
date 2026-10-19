@@ -7,8 +7,9 @@ import com.example.STOLOTO.security.JwtService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +22,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@WebAppConfiguration
+@AutoConfigureMockMvc
+@Import(TestcontainersConfiguration.class)
 @Transactional
 @DisplayName("SEC: Проверка прав доступа")
 class SecurityTests {
