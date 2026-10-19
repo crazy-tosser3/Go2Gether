@@ -44,11 +44,13 @@ public class SecurityConfig {
     private static final String API = "/api/v1";
 
     @Bean
-    SecurityFilterChain securityFilterChain(
+    SecurityFilterChain securityFilterChain (
             HttpSecurity http,
             JsonSecurityErrorHandler errorHandler,
             RateLimitFilter rateLimitFilter,
-            SecurityHeadersFilter headersFilter) {
+            SecurityHeadersFilter headersFilter)
+            throws Exception
+    {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> {})
