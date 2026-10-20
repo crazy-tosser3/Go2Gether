@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -36,4 +37,8 @@ public interface EventRepository extends JpaRepository<Event, Long>, JpaSpecific
     long countBySportIdAndStatusAndStartsAtAfter(Long sportId, EventStatus status, Instant after);
 
     long countByStatus(EventStatus status);
+
+    /** Кандидаты для рекомендаций: события в окне [from, to) по возрастанию даты. */
+    List<Event> findByStatusAndStartsAtBetweenOrderByStartsAtAsc(EventStatus status, Instant from, Instant to,
+            Pageable pageable);
 }

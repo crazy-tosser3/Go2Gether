@@ -77,6 +77,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 API + "/events", API + "/events/*",
                                 API + "/events/*/participants", API + "/events/*/comments",
+                                API + "/events/*/similar", API + "/recommendations/events",
                                 API + "/users/*",
                                 API + "/sports", API + "/sports/*",
                                 API + "/safety/banners", API + "/safety/banners/*",

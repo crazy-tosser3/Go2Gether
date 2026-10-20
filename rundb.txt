@@ -5,9 +5,9 @@ docker run --name StolotoHack -p 15432:15432 \
     -d postgres
 
 
-docker run --name StolotoRedis -p 16379:16379 -d redis:7
+docker run --name StolotoRedis --restart unless-stopped -p 16379:6379 -d redis:7 redis-server --requirepass <REDIS_PASSWORD из .env>
 
-docker exec -it StolotoHack psql -U admin -d UmirFlagman
+docker exec -it StolotoHack psql -U admin -d Stoloto
 
 
 
