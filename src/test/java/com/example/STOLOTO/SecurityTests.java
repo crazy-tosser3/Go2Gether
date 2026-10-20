@@ -208,6 +208,28 @@ class SecurityTests {
         org.junit.jupiter.api.Assertions.assertTrue(notified, "Участник должен получить уведомление о снятии");
     }
 
+    @Test
+    @DisplayName("TC-071: новый вопрос в обсуждении → организатор получил уведомление")
+    void newRootComment_notifiesOrganizer() throws Exception {
+        Long eventId = eventsRepo.findAll().stream()
+                .filter(e -> "Городки: турнир для новичков".equals(e.getTitle()))
+                .findFirst().orElseThrow().getId();
+        User asker = users.findByEmailIgnoreCase("user@demo.local").orElseThrow();
+        Long organizerId = users.findByEmailIgnoreCase("org2@demo.local").orElseThrow().getId();
+
+        mvc.perform(post("/api/v1/events/" + eventId + "/comments")
+                        .header("Authorization", "Bearer " + jwtService.issue(asker))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Во сколько начинается турнир?\"}"))
+                .andExpect(status().isCreated());
+
+        boolean notified = notificationsRepo.findAll().stream()
+                .anyMatch(n -> organizerId.equals(n.getRecipientId())
+                        && eventId.equals(n.getEventId())
+                        && n.getType() == com.example.STOLOTO.Models.NotificationType.NEW_COMMENT);
+        org.junit.jupiter.api.Assertions.assertTrue(notified, "Организатор должен получить уведомление о вопросе");
+    }
+
 
     private String tokenForUser(Role role) {
         User u = new User();

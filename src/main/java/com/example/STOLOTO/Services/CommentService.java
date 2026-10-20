@@ -87,6 +87,12 @@ public class CommentService {
             notificationService.notify(parent.getAuthorId(), NotificationType.COMMENT_REPLY, "Новый ответ",
                     me.getName() + " ответил(а) в обсуждении «" + e.getTitle() + "»", eventId);
         }
+        // Новый вопрос к событию — организатору (если пишет не он сам)
+        if (parent == null && !mapper.isOrganizer(e, me.getId())) {
+            notificationService.notify(mapper.organizerRecipient(e), NotificationType.NEW_COMMENT,
+                    "Новый вопрос в обсуждении",
+                    me.getName() + " написал(а) в обсуждении «" + e.getTitle() + "»", eventId);
+        }
         return mapper.toComment(c, e, false);
     }
 
