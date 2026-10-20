@@ -29,4 +29,7 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
 
     @Query("select coalesce(max(p.waitlistPosition), 0) from Participation p where p.eventId = :eventId")
     int maxWaitlistPosition(Long eventId);
+
+    List<Participation> findByEventIdInAndStatusIn(Collection<Long> eventIds,
+            Collection<ParticipationStatus> statuses);
 }
