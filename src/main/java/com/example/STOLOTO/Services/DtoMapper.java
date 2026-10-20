@@ -202,7 +202,7 @@ public class DtoMapper {
     // ---------- comments
 
     public CommentResponse toComment(Comment c, Event e, boolean admin) {
-        boolean byOrganizer = c.getAuthorId().equals(e.getOrganizerUserId())
+        boolean byOrganizer = isOrganizer(e, c.getAuthorId())
                 || (c.getAsOrganizationId() != null && c.getAsOrganizationId().equals(e.getOrganizerOrgId()));
         return new CommentResponse(c.getId(), c.getEventId(), c.getParentId(), userShort(c.getAuthorId()),
                 organizationShort(c.getAsOrganizationId()), byOrganizer, c.isHidden() ? null : c.getText(),

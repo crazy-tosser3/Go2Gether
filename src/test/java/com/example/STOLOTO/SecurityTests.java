@@ -166,6 +166,48 @@ class SecurityTests {
         org.junit.jupiter.api.Assertions.assertEquals("2026-10-19", saved.getConsentPolicyVersion());
     }
 
+    @Autowired com.example.STOLOTO.repository.EventRepository eventsRepo;
+
+    @Test
+    @DisplayName("TC-069: владелец организации отвечает от своего имени → is_organizer = true")
+    void orgOwnerCommentsPersonally_isMarkedAsOrganizer() throws Exception {
+        Long eventId = eventsRepo.findAll().stream()
+                .filter(e -> "Мини-футбол 5×5 вечером".equals(e.getTitle()))
+                .findFirst().orElseThrow().getId();
+        User owner = users.findByEmailIgnoreCase("org@demo.local").orElseThrow();
+
+        mvc.perform(post("/api/v1/events/" + eventId + "/comments")
+                        .header("Authorization", "Bearer " + jwtService.issue(owner))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Ответ владельца клуба от своего имени\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.is_organizer").value(true))
+                .andExpect(jsonPath("$.as_organization").doesNotExist());
+    }
+
+    @Autowired com.example.STOLOTO.repository.NotificationRepository notificationsRepo;
+
+    @Test
+    @DisplayName("TC-070: админ снял событие → записавшийся участник получил уведомление")
+    void adminUnpublishes_participantGetsNotification() throws Exception {
+        Long eventId = eventsRepo.findAll().stream()
+                .filter(e -> "Мини-футбол 5×5 вечером".equals(e.getTitle()))
+                .findFirst().orElseThrow().getId();
+        Long participantId = users.findByEmailIgnoreCase("user@demo.local").orElseThrow().getId();
+
+        mvc.perform(post("/api/v1/admin/events/" + eventId + "/unpublish")
+                        .header("Authorization", "Bearer " + tokenForUser(Role.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Тест: нарушение правил\"}"))
+                .andExpect(status().isOk());
+
+        boolean notified = notificationsRepo.findAll().stream()
+                .anyMatch(n -> participantId.equals(n.getRecipientId())
+                        && eventId.equals(n.getEventId())
+                        && n.getType() == com.example.STOLOTO.Models.NotificationType.EVENT_UNPUBLISHED);
+        org.junit.jupiter.api.Assertions.assertTrue(notified, "Участник должен получить уведомление о снятии");
+    }
+
 
     private String tokenForUser(Role role) {
         User u = new User();

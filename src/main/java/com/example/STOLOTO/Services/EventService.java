@@ -310,8 +310,10 @@ public class EventService {
         e.setModeratedAt(Instant.now());
         regions.eventChanged(e);
         audit.event(admin.getId(), e.getId(), action, reason);
-        notificationService.notify(mapper.organizerRecipient(e), notification, title,
-                "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason), e.getId());
+        String body = "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason);
+        notificationService.notify(mapper.organizerRecipient(e), notification, title, body, e.getId());
+        // Записавшимся тоже: снято / удалено / восстановлено (сценарий 6)
+        notifyParticipants(e, notification, title, body);
         return mapper.toEventDetails(e, admin);
     }
 
