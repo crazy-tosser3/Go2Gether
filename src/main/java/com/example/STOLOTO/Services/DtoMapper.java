@@ -18,12 +18,14 @@ import com.example.STOLOTO.DTO.organization.OrganizationResponse;
 import com.example.STOLOTO.DTO.organization.OrganizationShortResponse;
 import com.example.STOLOTO.DTO.participation.ParticipantResponse;
 import com.example.STOLOTO.DTO.participation.ParticipationResponse;
+import com.example.STOLOTO.DTO.report.ReportResponse;
 import com.example.STOLOTO.DTO.sport.SportResponse;
 import com.example.STOLOTO.DTO.user.UserResponse;
 import com.example.STOLOTO.DTO.user.UserShortResponse;
 import com.example.STOLOTO.Models.AuditLog;
 import com.example.STOLOTO.Models.Comment;
 import com.example.STOLOTO.Models.Event;
+import com.example.STOLOTO.Models.EventReport;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.Notification;
 import com.example.STOLOTO.Models.Organization;
@@ -198,6 +200,11 @@ public class DtoMapper {
     public NotificationResponse toNotification(Notification n) {
         return new NotificationResponse(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getEventId(),
                 n.isRead(), n.getCreatedAt());
+    }
+
+    public ReportResponse toReport(EventReport r, Event e) {
+        return new ReportResponse(r.getId(), toEventShort(e), userShort(r.getReporterId()), r.getReason(),
+                r.getComment(), r.getStatus(), r.getResolutionNote(), r.getResolvedAt(), r.getCreatedAt());
     }
 
     public ModerationLogResponse toModerationLog(AuditLog l) {

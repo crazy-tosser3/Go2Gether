@@ -12,7 +12,9 @@ import com.example.STOLOTO.DTO.admin.CacheStatsResponse;
 import com.example.STOLOTO.DTO.admin.DashboardResponse;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.OrganizationStatus;
+import com.example.STOLOTO.Models.ReportStatus;
 import com.example.STOLOTO.repository.CommentRepository;
+import com.example.STOLOTO.repository.EventReportRepository;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.OrganizationRepository;
 import com.example.STOLOTO.cache.PageCache;
@@ -31,6 +33,7 @@ public class AdminService {
     private final EventRepository events;
     private final CommentRepository comments;
     private final UserRepository users;
+    private final EventReportRepository reports;
     private final PageCache pageCache;
     private final CacheManager cacheManager;
     private final ObjectProvider<MeterRegistry> meters;
@@ -44,6 +47,7 @@ public class AdminService {
                 events.countByStatus(EventStatus.DELETED),
                 events.countByStatus(EventStatus.CANCELLED),
                 comments.countByHiddenTrue(),
+                reports.countByStatus(ReportStatus.PENDING),
                 users.count());
     }
 

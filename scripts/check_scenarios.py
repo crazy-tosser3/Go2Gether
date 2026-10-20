@@ -4,7 +4,7 @@
 
 Скрипт входит под демо-аккаунтами (demo_account_id) и работает только с данными, которые
 создаёт сам: мероприятия, организация, заявки, комментарии; затем снимает и удаляет своё
-мероприятие. Сидовые записи не меняет. Данные остаются в базе — запускайте на локальной/тестовой БД. Делает ~60 изменяющих запросов: повторный
+мероприятие. Сидовые записи не меняет. Данные остаются в базе — запускайте на локальной/тестовой БД. Делает ~70 изменяющих запросов: повторный
 запуск в течение минуты с того же IP упрётся в лимит RateLimitFilter (60 записей/мин).
 Код выхода 1, если хотя бы одна проверка не прошла.
 """
@@ -226,6 +226,39 @@ st, r = call("GET", f"/events/{s1}", None)
 check("S6 deleted -> 410", st == 410)
 st, r = call("POST", f"/admin/events/{s1}/unpublish", U1, {"reason": "x"})
 check("S6 user cannot unpublish -> 403", st == 403)
+
+# ---------- Reports (жалобы на мероприятия)
+st, rev = call("POST", "/events", U1, {"title": "R жалобы", "sport_id": football["id"], "starts_at": start,
+                                      "address": "Красноярск", "join_mode": "open"})
+rid = rev["id"]
+st, r1 = call("POST", f"/events/{rid}/reports", U2, {"reason": "misleading", "comment": "Адрес не существует"})
+check("R report -> 201 pending", st == 201 and r1["status"] == "pending", (st, r1))
+st, r = call("POST", f"/events/{rid}/reports", U2, {"reason": "spam"})
+check("R duplicate pending -> 409 ALREADY_REPORTED", st == 409 and r["error"]["code"] == "ALREADY_REPORTED")
+st, r = call("POST", f"/events/{rid}/reports", U1, {"reason": "spam"})
+check("R own event -> 409 OWN_EVENT", st == 409 and r["error"]["code"] == "OWN_EVENT")
+st, r = call("GET", f"/admin/reports?status=pending&event_id={rid}", U2)
+check("R user -> admin queue 403", st == 403)
+st, r = call("GET", f"/admin/reports?status=pending&event_id={rid}", ADM)
+check("R admin queue", st == 200 and [x["id"] for x in r["items"]] == [r1["id"]], r)
+st, r = call("POST", f"/admin/reports/{r1['id']}/reject", ADM, {"reason": "Адрес верный"})
+check("R reject -> event stays published", st == 200 and r["status"] == "rejected"
+      and call("GET", f"/events/{rid}")[0] == 200)
+st, r2 = call("POST", f"/events/{rid}/reports", U2, {"reason": "dangerous", "comment": "Стройка"})
+check("R new report after decision -> 201", st == 201)
+st, r3 = call("POST", f"/events/{rid}/reports", ORG, {"reason": "spam"})
+st, r = call("POST", f"/admin/reports/{r2['id']}/accept", ADM, {"reason": "Небезопасное место"})
+check("R accept -> accepted", st == 200 and r["status"] == "accepted", r)
+st, r = call("GET", "/events?size=100")
+check("R accepted event gone from feed", all(e["id"] != rid for e in r["items"]))
+st, r = call("GET", f"/events/{rid}", None)
+check("R accepted event direct link -> 410", st == 410)
+st, r = call("GET", "/users/me/reports", ORG)
+check("R other pending report auto-accepted", any(x["id"] == r3["id"] and x["status"] == "accepted" for x in r))
+st, n = call("GET", "/notifications", U2)
+check("R reporter notified REPORT_RESOLVED", sum(1 for x in n if x["type"] == "report_resolved" and x["event_id"] == rid) == 2)
+st, r = call("GET", "/admin/dashboard", ADM)
+check("R dashboard pending_reports", st == 200 and "pending_reports" in r, r)
 
 # ---------- extra
 st, r = call("POST", f"/events/{oev['id']}/cancel", U1, {"reason": "Дождь"})

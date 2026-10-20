@@ -8,5 +8,6 @@ public record DashboardResponse(
         long deletedEvents,
         long cancelledEvents,
         long hiddenComments,
+        long pendingReports,
         long users) {
 }

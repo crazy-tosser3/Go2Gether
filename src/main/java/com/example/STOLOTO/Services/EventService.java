@@ -26,12 +26,14 @@ import com.example.STOLOTO.Models.JoinMode;
 import com.example.STOLOTO.Models.Level;
 import com.example.STOLOTO.Models.NotificationType;
 import com.example.STOLOTO.Models.ParticipationStatus;
+import com.example.STOLOTO.Models.ReportStatus;
 import com.example.STOLOTO.Models.Role;
 import com.example.STOLOTO.Models.User;
 import com.example.STOLOTO.cache.CacheRegions;
 import com.example.STOLOTO.cache.PageCache;
 import com.example.STOLOTO.exception.ApiException;
 import com.example.STOLOTO.repository.CommentRepository;
+import com.example.STOLOTO.repository.EventReportRepository;
 import com.example.STOLOTO.repository.EventRepository;
 import com.example.STOLOTO.repository.ParticipationRepository;
 import com.example.STOLOTO.security.CurrentUser;
@@ -48,6 +50,7 @@ public class EventService {
     private final EventRepository events;
     private final ParticipationRepository participations;
     private final CommentRepository comments;
+    private final EventReportRepository reports;
     private final SportService sportService;
     private final OrganizationService organizationService;
     private final NotificationService notificationService;
@@ -294,7 +297,25 @@ public class EventService {
         String body = "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason);
         notificationService.notify(mapper.organizerRecipient(e), notification, title, body, e.getId());
         notifyParticipants(e, notification, title, body);
+        if (status == EventStatus.UNPUBLISHED || status == EventStatus.DELETED) {
+            acceptReports(e, admin.getId(), reason);
+        }
         return mapper.toEventDetails(e, admin);
+    }
+
+    // Снятие или удаление закрывает все нерассмотренные жалобы на мероприятие, даже если админ
+    // действовал не из очереди жалоб: авторы узнают, что их сигнал учтён.
+    private void acceptReports(Event e, Long adminId, String reason) {
+        Instant now = Instant.now();
+        reports.findByEventIdAndStatus(e.getId(), ReportStatus.PENDING).forEach(r -> {
+            r.setStatus(ReportStatus.ACCEPTED);
+            r.setResolutionNote(reason);
+            r.setResolvedBy(adminId);
+            r.setResolvedAt(now);
+            notificationService.notify(r.getReporterId(), NotificationType.REPORT_RESOLVED, "Жалоба принята",
+                    "«" + e.getTitle() + "» снято с публикации" + (reason == null ? "" : ". Причина: " + reason),
+                    e.getId());
+        });
     }
 
     private void notifyParticipants(Event e, NotificationType type, String title, String body) {

@@ -18,18 +18,22 @@ import com.example.STOLOTO.DTO.admin.DashboardResponse;
 import com.example.STOLOTO.DTO.admin.ModerationLogResponse;
 import com.example.STOLOTO.DTO.comment.CommentResponse;
 import com.example.STOLOTO.DTO.common.PageResponse;
+import com.example.STOLOTO.DTO.common.OptionalReasonRequest;
 import com.example.STOLOTO.DTO.common.ReasonRequest;
 import com.example.STOLOTO.DTO.event.EventDetailsResponse;
 import com.example.STOLOTO.DTO.event.EventShortResponse;
 import com.example.STOLOTO.DTO.organization.OrganizationResponse;
+import com.example.STOLOTO.DTO.report.ReportResponse;
 import com.example.STOLOTO.Models.EventStatus;
 import com.example.STOLOTO.Models.ModerationTargetType;
 import com.example.STOLOTO.Models.OrganizationStatus;
+import com.example.STOLOTO.Models.ReportStatus;
 import com.example.STOLOTO.Services.AdminService;
 import com.example.STOLOTO.Services.CommentService;
 import com.example.STOLOTO.Services.EventService;
 import com.example.STOLOTO.Services.AuditService;
 import com.example.STOLOTO.Services.OrganizationService;
+import com.example.STOLOTO.Services.ReportService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +48,7 @@ public class AdminController {
     private final EventService eventService;
     private final CommentService commentService;
     private final AuditService auditService;
+    private final ReportService reportService;
 
     @GetMapping("/dashboard")
     public DashboardResponse dashboard() {
@@ -109,6 +114,26 @@ public class AdminController {
     @PostMapping("/comments/{cid}/hide")
     public CommentResponse hideComment(@PathVariable Long cid, @Valid @RequestBody ReasonRequest request) {
         return commentService.hide(cid, request.reason());
+    }
+
+    @GetMapping("/reports")
+    public PageResponse<ReportResponse> reports(
+            @RequestParam(required = false) ReportStatus status,
+            @RequestParam(name = "event_id", required = false) Long eventId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return reportService.adminList(status, eventId, page, size);
+    }
+
+    @PostMapping("/reports/{id}/accept")
+    public ReportResponse acceptReport(@PathVariable Long id, @Valid @RequestBody ReasonRequest request) {
+        return reportService.accept(id, request.reason());
+    }
+
+    @PostMapping("/reports/{id}/reject")
+    public ReportResponse rejectReport(@PathVariable Long id,
+            @Valid @RequestBody(required = false) OptionalReasonRequest request) {
+        return reportService.reject(id, request == null ? null : request.reason());
     }
 
     @GetMapping("/audit-log")
