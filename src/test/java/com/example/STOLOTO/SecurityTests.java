@@ -13,7 +13,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-
+import jakarta.servlet.http.Cookie;
+import org.springframework.http.HttpHeaders;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import java.time.Instant;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -118,6 +121,25 @@ class SecurityTests {
                         .header("Authorization", "Bearer this.is.not.a.jwt"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    @DisplayName("TC-067: мусорная cookie на публичном запросе → 200 и cookie стирается")
+    void garbageCookieOnPublic_returns200AndClearsCookie() throws Exception {
+        mvc.perform(get("/api/v1/auth/demo-accounts")
+                        .cookie(new Cookie("jwt", "garbage")))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+    }
+
+    @Test
+    @DisplayName("TC-067b: мусорная cookie на закрытом запросе → 401 и cookie стирается")
+    void garbageCookieOnProtected_returns401AndClearsCookie() throws Exception {
+        mvc.perform(get("/api/v1/auth/me")
+                        .cookie(new Cookie("jwt", "garbage")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+    }
+
 
     private String tokenForUser(Role role) {
         User u = new User();

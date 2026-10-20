@@ -29,7 +29,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
-
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import com.example.STOLOTO.security.StaleJwtCookieFilter;
 import com.example.STOLOTO.security.Argon2PasswordEncoder;
 import com.example.STOLOTO.security.JsonSecurityErrorHandler;
 import com.example.STOLOTO.security.JwtProperties;
@@ -48,7 +49,8 @@ public class SecurityConfig {
             HttpSecurity http,
             JsonSecurityErrorHandler errorHandler,
             RateLimitFilter rateLimitFilter,
-            SecurityHeadersFilter headersFilter)
+            SecurityHeadersFilter headersFilter,
+            JwtDecoder jwtDecoder)
             throws Exception
     {
         http
@@ -56,6 +58,7 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .addFilterBefore(headersFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, SecurityHeadersFilter.class)
+                .addFilterBefore(new StaleJwtCookieFilter(jwtDecoder), BearerTokenAuthenticationFilter.class)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()
