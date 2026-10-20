@@ -1,0 +1,3 @@
+# Скрипт msw только копирует mockServiceWorker.js, он уже лежит в public/.
+allowBuilds:
+  msw: false

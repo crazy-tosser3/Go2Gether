@@ -1,0 +1,415 @@
+@import 'tailwindcss';
+
+/* Телефон в альбомной ориентации: высоты мало, закреплённые панели съедают половину экрана. */
+@custom-variant short (@media (orientation: landscape) and (max-height: 500px));
+
+@theme {
+  --font-sans: 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Exo 2', 'Inter Tight', system-ui, sans-serif;
+  --font-hand: 'Caveat', 'Inter Tight', cursive;
+
+  /*
+    Токены дизайн-системы Go2Gether. Имена прежние (ink, page, card…), соответствие системе:
+    ink — ink, ink-2 — ink-muted, page — bg, card — surface, field — surface-muted, mute — line,
+    accent — brand-periwinkle, accent-soft — brand-sky, lilac — brand-lilac, orange — accent,
+    accent-ink — date, accent-strong — focus, white — on-primary.
+  */
+  --color-ink: #111111;
+  --color-ink-2: #4a4d5c;
+  --color-page: #eeeff4;
+  --color-card: #ffffff;
+  --color-field: #eeeff4;
+  --color-mute: #dadce6;
+  --color-accent: #a5b4ff;
+  --color-accent-soft: #c9d3ff;
+  --color-accent-ink: #2b3480;
+  --color-accent-strong: #2f3cf5;
+  --color-orange: #f28c28;
+  --color-orange-ink: #111111;
+  --color-lilac: #e9b5f5;
+  --color-white: #ffffff;
+  --color-cream: #fff7ec;
+  --color-reason: #f3e0f9;
+  --color-signal: #e2432b;
+  /* Текст ошибки у поля; статусы — парами *-bg и *-fg, одинаковыми в обеих темах. */
+  --color-danger: #8c1d18;
+  --color-success-bg: #cff3dc;
+  --color-success-fg: #0e5a2e;
+  --color-success-solid: #1f8a4c;
+  --color-warning-bg: #ffe7b3;
+  --color-warning-fg: #6b4500;
+  --color-queue-bg: #e6ddff;
+  --color-queue-fg: #4b2fa8;
+  --color-danger-bg: #ffd6d1;
+  --color-danger-fg: #8c1d18;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 26px;
+  --radius-2xl: 32px;
+  --radius-card: 26px;
+  --radius-field: 16px;
+  --radius-screen: 32px;
+
+  --shadow-raised: 0 10px 30px -18px rgb(17 17 17 / 0.35);
+  --shadow-header: 0 6px 18px -12px rgb(17 17 17 / 0.25);
+  --shadow-toggle: 0 2px 6px rgb(17 17 17 / 0.25);
+}
+
+html {
+  font-size: 16px;
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  transition:
+    background-color 0.25s,
+    color 0.25s;
+}
+
+@layer base {
+  /* Exo 2 загружен только курсивом 800/900 — заголовки и логотип всегда наклонные и жирные. */
+  h1,
+  h2,
+  .font-display {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 900;
+  }
+
+  h1,
+  h2 {
+    text-transform: uppercase;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+
+  h1 {
+    line-height: 1;
+  }
+
+  /* Бренд-цвета одинаковы в обеих темах, текст на них всегда #111111 — в тёмной теме тоже. */
+  :is(.bg-accent, .bg-accent-soft, .bg-lilac, .bg-orange, .bg-cream) {
+    --color-ink: #111111;
+    --color-ink-2: #34364a;
+    --color-accent-ink: #1b1f6b;
+    --color-white: #ffffff;
+    --color-card: #ffffff;
+    --color-field: #ffffff;
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-accent-strong);
+    outline-offset: 2px;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 3px solid var(--color-accent-strong);
+    outline-offset: 0;
+    background-color: var(--color-card);
+  }
+}
+
+/*
+  Тёмная тема: меняются только нейтральные токены, бренд-цвета, статусы и иллюстрации прежние.
+  Выбор пользователя — data-theme на <html>, без выбора — как в системе.
+  Контраст значений проверяет src/assets/__tests__/contrast.spec.ts.
+*/
+:root[data-theme='dark'] {
+  --color-ink: #f2f3f7;
+  --color-ink-2: #a9acbd;
+  --color-page: #0f1016;
+  --color-card: #1b1d27;
+  --color-field: #262938;
+  --color-mute: #3a3d50;
+  --color-accent-ink: #a5b4ff;
+  --color-accent-strong: #a5b4ff;
+  --color-reason: #3b2a47;
+  --color-danger: #ff9b8f;
+  /* Белый текст стоит только на кнопках bg-ink (primary) — в тёмной теме они светлые, текст на них тёмный. */
+  --color-white: #111111;
+  --shadow-raised: 0 10px 30px -14px rgb(0 0 0 / 0.7);
+  --shadow-header: 0 6px 18px -10px rgb(0 0 0 / 0.7);
+  --shadow-toggle: 0 2px 6px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-ink: #f2f3f7;
+    --color-ink-2: #a9acbd;
+    --color-page: #0f1016;
+    --color-card: #1b1d27;
+    --color-field: #262938;
+    --color-mute: #3a3d50;
+    --color-accent-ink: #a5b4ff;
+    --color-accent-strong: #a5b4ff;
+    --color-reason: #3b2a47;
+    --color-danger: #ff9b8f;
+    /* Белый текст стоит только на кнопках bg-ink (primary) — в тёмной теме они светлые, текст на них тёмный. */
+    --color-white: #111111;
+    --shadow-raised: 0 10px 30px -14px rgb(0 0 0 / 0.7);
+    --shadow-header: 0 6px 18px -10px rgb(0 0 0 / 0.7);
+    --shadow-toggle: 0 2px 6px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+
+/* Подложка модальных окон — затемнение, а не светлая пелена от перекрашенного ink. */
+:root[data-theme='dark'] dialog::backdrop {
+  background-color: rgb(0 0 0 / 0.6);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) dialog::backdrop {
+    background-color: rgb(0 0 0 / 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Анимации рисунков из макета Go2Gether (обложки и пиктограммы сторис). При «меньше движения» — без них. */
+@keyframes art-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes art-zoom {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes art-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@keyframes art-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(9px, -6px);
+  }
+}
+@keyframes art-tw {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+@keyframes art-jump {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-12px);
+  }
+}
+@keyframes art-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+.art-spin {
+  animation: art-spin 7s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.art-zoom {
+  animation: art-zoom 2.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.art-flow {
+  animation: art-flow 3s linear infinite;
+}
+.art-drift {
+  animation: art-drift 3s ease-in-out infinite;
+  transform-box: fill-box;
+}
+.art-drift2 {
+  animation: art-drift 3s ease-in-out 1.5s infinite;
+  transform-box: fill-box;
+}
+.art-tw {
+  animation: art-tw 1.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.art-tw2 {
+  animation: art-tw 1.8s ease-in-out 0.9s infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.art-jump {
+  animation: art-jump 1.4s ease-in-out infinite;
+  transform-box: fill-box;
+}
+.art-jump2 {
+  animation: art-jump 1.4s ease-in-out 0.35s infinite;
+  transform-box: fill-box;
+}
+.art-pulse {
+  animation: art-pulse 2.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes art-streak {
+  0% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-80px);
+    opacity: 0;
+  }
+}
+@keyframes art-run {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+@keyframes art-kick {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+.art-st {
+  animation: art-streak 1.8s ease-in infinite;
+}
+.art-st2 {
+  animation: art-streak 1.8s ease-in 0.6s infinite;
+}
+.art-st3 {
+  animation: art-streak 1.8s ease-in 1.2s infinite;
+}
+.art-run {
+  animation: art-run 0.9s ease-in-out infinite;
+  transform-box: fill-box;
+}
+.art-run2 {
+  animation: art-run 0.9s ease-in-out 0.45s infinite;
+  transform-box: fill-box;
+}
+.art-kick {
+  animation: art-kick 1.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+}
+@keyframes art-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes art-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-16deg);
+  }
+}
+@keyframes art-sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes art-flash {
+  0%,
+  90%,
+  100% {
+    opacity: 0;
+  }
+  92% {
+    opacity: 0.85;
+  }
+}
+.art-breathe {
+  animation: art-breathe 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+}
+.art-wave {
+  animation: art-wave 1.2s ease-in-out infinite;
+}
+.art-sway {
+  animation: art-sway 2.4s ease-in-out infinite;
+}
+.art-flash {
+  opacity: 0;
+  animation: art-flash 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .art-breathe,
+  .art-wave,
+  .art-sway,
+  .art-flash,
+  .art-st,
+  .art-st2,
+  .art-st3,
+  .art-run,
+  .art-run2,
+  .art-kick,
+  .art-spin,
+  .art-zoom,
+  .art-flow,
+  .art-drift,
+  .art-drift2,
+  .art-tw,
+  .art-tw2,
+  .art-jump,
+  .art-jump2,
+  .art-pulse {
+    animation: none;
+  }
+}
