@@ -18,7 +18,7 @@ import org.springframework.http.HttpHeaders;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import java.time.Instant;
-
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -138,6 +138,34 @@ class SecurityTests {
                         .cookie(new Cookie("jwt", "garbage")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+    }
+
+    @Test
+    @DisplayName("TC-068: регистрация без согласия на ПДн → 422 по полю consent")
+    void registerWithoutConsent_returns422() throws Exception {
+        mvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Анна", "email": "anna-%d@test.local", "password": "Password123"}
+                                """.formatted(System.nanoTime())))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error.fields.consent").exists());
+    }
+
+    @Test
+    @DisplayName("TC-068b: регистрация с согласием → 201, время и версия сохранены")
+    void registerWithConsent_savesConsent() throws Exception {
+        String email = "anna-" + System.nanoTime() + "@test.local";
+        mvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Анна", "email": "%s", "password": "Password123", "consent": true}
+                                """.formatted(email)))
+                .andExpect(status().isCreated());
+
+        User saved = users.findByEmailIgnoreCase(email).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertNotNull(saved.getConsentAt());
+        org.junit.jupiter.api.Assertions.assertEquals("2026-10-19", saved.getConsentPolicyVersion());
     }
 
 

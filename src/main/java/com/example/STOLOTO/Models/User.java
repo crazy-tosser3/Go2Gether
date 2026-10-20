@@ -50,7 +50,6 @@ public class User {
     @Column(name = "fitness_level")
     private Level level;
 
-    /** Интересы пользователя (V10: user_sports). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_sports", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "sport_id")
@@ -63,4 +62,8 @@ public class User {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    //152 - Фз
+    private Instant consentAt;
+    private String consentPolicyVersion;
 }

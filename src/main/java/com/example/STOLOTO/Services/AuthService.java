@@ -44,6 +44,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final CurrentUser currentUser;
     private final DtoMapper mapper;
+    public static final String PRIVACY_POLICY_VERSION = "2026-10-19";
 
     @Transactional(readOnly = true)
     @Cacheable("demo-accounts")
@@ -66,6 +67,8 @@ public class AuthService {
         u.setPasswordHash(passwordEncoder.encode(request.password()));
         u.setCreatedAt(Instant.now());
         u.setUpdatedAt(u.getCreatedAt());
+        u.setConsentAt(u.getCreatedAt());
+        u.setConsentPolicyVersion(PRIVACY_POLICY_VERSION);
         users.save(u);
         return authResponse(u);
     }
