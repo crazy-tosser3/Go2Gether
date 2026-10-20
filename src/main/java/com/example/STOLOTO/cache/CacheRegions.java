@@ -8,9 +8,6 @@ import com.example.STOLOTO.Models.Event;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Регионы кэша страниц, их TTL и правила инвалидации: что сбрасывать при изменении сущности.
- */
 @Component
 @RequiredArgsConstructor
 public class CacheRegions {
@@ -45,7 +42,6 @@ public class CacheRegions {
         return "user:" + id;
     }
 
-    /** Событие или его записи изменились: карточка, лента, счётчики у организатора и направления. */
     public void eventChanged(Event e) {
         cache.invalidate(FEED, SPORT_STATS, event(e.getId()),
                 e.getOrganizerOrgId() != null ? org(e.getOrganizerOrgId()) : user(e.getOrganizerUserId()));
@@ -55,12 +51,10 @@ public class CacheRegions {
         cache.invalidate(comments(eventId));
     }
 
-    /** Название/статус организации видны в каталоге, на её странице и в ленте. */
     public void organizationChanged(Long orgId) {
         cache.invalidate(ORGS, org(orgId), FEED);
     }
 
-    /** Имя/аватар пользователя видны в профиле и в ленте. */
     public void userChanged(Long userId) {
         cache.invalidate(user(userId), FEED);
     }

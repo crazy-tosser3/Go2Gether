@@ -17,8 +17,6 @@ import com.example.STOLOTO.Models.EventStatus;
 import jakarta.persistence.LockModeType;
 
 public interface EventRepository extends JpaRepository<Event, Long>, JpaSpecificationExecutor<Event> {
-
-    /** Блокировка строки события при записи/подтверждении — защита лимита мест от гонок. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Event e where e.id = :id")
     Optional<Event> findByIdForUpdate(Long id);
@@ -38,7 +36,6 @@ public interface EventRepository extends JpaRepository<Event, Long>, JpaSpecific
 
     long countByStatus(EventStatus status);
 
-    /** Кандидаты для рекомендаций: события в окне [from, to) по возрастанию даты. */
     List<Event> findByStatusAndStartsAtBetweenOrderByStartsAtAsc(EventStatus status, Instant from, Instant to,
             Pageable pageable);
 }

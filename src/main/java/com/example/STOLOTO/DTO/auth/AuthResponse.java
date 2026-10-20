@@ -4,7 +4,7 @@ import com.example.STOLOTO.DTO.user.UserResponse;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public record AuthResponse(
-        @JsonIgnore String token,   // не отдаём токен в JSON — он идёт в куки
+        @JsonIgnore String token,
         String tokenType,
         long expiresIn,
         UserResponse user) {

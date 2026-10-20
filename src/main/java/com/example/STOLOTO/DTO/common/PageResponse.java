@@ -13,7 +13,6 @@ public record PageResponse<T>(List<T> items, int page, int size, long total, int
     public static final int DEFAULT_SIZE = 20;
     public static final int MAX_SIZE = 100;
 
-    /** Pageable из query-параметров page (с нуля) и size с ограничениями. */
     public static Pageable pageable(Integer page, Integer size, Sort sort) {
         int p = page == null || page < 0 ? 0 : page;
         int s = size == null || size < 1 ? DEFAULT_SIZE : Math.min(size, MAX_SIZE);

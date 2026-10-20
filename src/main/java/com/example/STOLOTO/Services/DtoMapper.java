@@ -3,6 +3,7 @@ package com.example.STOLOTO.Services;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.TreeMap;
 
 import org.springframework.stereotype.Component;
 
@@ -39,7 +40,6 @@ import com.example.STOLOTO.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/** Сборка DTO из сущностей + общая проверка «кто организатор события». */
 @Component
 @RequiredArgsConstructor
 public class DtoMapper {
@@ -51,11 +51,11 @@ public class DtoMapper {
     private final OrganizationRepository organizations;
     private final ParticipationRepository participations;
 
-    // ---------- users
-
     public UserResponse toUser(User u) {
         return new UserResponse(u.getId(), u.getName(), u.getEmail(), u.getRole(), u.getAvatarUrl(), u.getCity(),
-                u.getAbout(), u.getLevel(), List.copyOf(u.getSportIds()), u.isDemo(), u.getCreatedAt());
+                u.getAbout(), u.getLevel(), List.copyOf(u.getSportIds()), u.isDemo(), u.getCreatedAt(),
+                u.getBirthYear(), new TreeMap<>(u.getSportLevels()), u.getRadiusKm(),
+                u.getPreferredTimes().stream().sorted().toList(), u.getPreferredAgeFrom(), u.getPreferredAgeTo());
     }
 
     public UserShortResponse toUserShort(User u) {
@@ -65,8 +65,6 @@ public class DtoMapper {
     public UserShortResponse userShort(Long userId) {
         return userId == null ? null : users.findById(userId).map(this::toUserShort).orElse(DELETED_USER);
     }
-
-    // ---------- sports
 
     public SportResponse toSport(Sport s) {
         return new SportResponse(s.getId(), s.getName(), s.getCategory(), s.getIcon(), s.isCustom());
@@ -80,8 +78,6 @@ public class DtoMapper {
         return sportIds == null ? List.of() : sportIds.stream().map(this::sport).filter(Objects::nonNull).toList();
     }
 
-    // ---------- organizations
-
     public OrganizationShortResponse toOrganizationShort(Organization o) {
         return new OrganizationShortResponse(o.getId(), o.getName(), o.getType(), o.getCity(), o.getStatus());
     }
@@ -90,7 +86,6 @@ public class DtoMapper {
         return orgId == null ? null : organizations.findById(orgId).map(this::toOrganizationShort).orElse(null);
     }
 
-    /** privileged — владелец или админ: видит причину отклонения и дату решения. */
     public OrganizationResponse toOrganization(Organization o, boolean privileged) {
         return new OrganizationResponse(o.getId(), o.getName(), o.getDescription(), o.getType(),
                 o.getSportsDescription(), o.getCity(), o.getWebsiteUrl(), o.getAvatarUrl(), o.getContacts(),
@@ -98,9 +93,6 @@ public class DtoMapper {
                 userShort(o.getOwnerId()), o.getCreatedAt(), o.getUpdatedAt());
     }
 
-    // ---------- events
-
-    /** Организатор события — автор-пользователь или владелец организации-организатора. */
     public boolean isOrganizer(Event e, Long userId) {
         if (userId == null) {
             return false;
@@ -112,7 +104,6 @@ public class DtoMapper {
                 .map(o -> userId.equals(o.getOwnerId())).orElse(false);
     }
 
-    /** Кому слать уведомления организатора: автору или владельцу организации. */
     public Long organizerRecipient(Event e) {
         if (e.getOrganizerUserId() != null) {
             return e.getOrganizerUserId();
@@ -144,19 +135,18 @@ public class DtoMapper {
     public EventShortResponse toEventShort(Event e) {
         return new EventShortResponse(e.getId(), e.getTitle(), sport(e.getSportId()), organizer(e), e.getStartsAt(),
                 e.getEndsAt(), e.getCity(), e.getAddress(), e.getLevel(), e.getJoinMode(), e.getCapacity(),
-                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(), e.isPast(), e.isEdited(),
+                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(),
+                e.getStatus() == EventStatus.PUBLISHED ? null : e.unavailableReason(), e.isPast(), e.isEdited(),
                 approx(e.getLat()), approx(e.getLng()));
     }
     private static Double approx(Double coordinate) {
         return coordinate == null ? null : Math.round(coordinate * 100) / 100.0;
     }
 
-    /** Карточка события глазами viewer (null — гость). */
     public EventDetailsResponse toEventDetails(Event e, User viewer) {
         return personalize(toEventCard(e), viewer);
     }
 
-    /** Общая для всех зрителей карточка (кладётся в кэш): полная информация, без «моей записи». */
     public EventCard toEventCard(Event e) {
         var confirmed =
                 participations.findByEventIdAndStatusOrderByCreatedAtAsc(e.getId(), ParticipationStatus.CONFIRMED);
@@ -173,7 +163,6 @@ public class DtoMapper {
         return new EventCard(full, e.getOrganizerUserId(), ownerId);
     }
 
-    /** Наложить на общую карточку данные конкретного зрителя (1 запрос — его запись на событие). */
     public EventDetailsResponse personalize(EventCard card, User viewer) {
         Long viewerId = viewer == null ? null : viewer.getId();
         boolean organizer = card.isOrganizer(viewerId);
@@ -186,8 +175,6 @@ public class DtoMapper {
                 mine == null ? null : toParticipation(mine));
     }
 
-    // ---------- participations
-
     public ParticipationResponse toParticipation(Participation p) {
         return new ParticipationResponse(p.getId(), p.getEventId(), p.getUserId(), p.getStatus(), p.getMessage(),
                 p.getDecisionReason(), p.getDecidedAt(), p.getCreatedAt());
@@ -199,8 +186,6 @@ public class DtoMapper {
                 withContacts ? p.getMessage() : null, withContacts ? p.getDecisionReason() : null, p.getCreatedAt());
     }
 
-    // ---------- comments
-
     public CommentResponse toComment(Comment c, Event e, boolean admin) {
         boolean byOrganizer = isOrganizer(e, c.getAuthorId())
                 || (c.getAsOrganizationId() != null && c.getAsOrganizationId().equals(e.getOrganizerOrgId()));
@@ -209,8 +194,6 @@ public class DtoMapper {
                 c.isHidden(), admin ? c.getHiddenReason() : null, c.getUpdatedAt() != null, c.getCreatedAt(),
                 c.getUpdatedAt());
     }
-
-    // ---------- misc
 
     public NotificationResponse toNotification(Notification n) {
         return new NotificationResponse(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getEventId(),

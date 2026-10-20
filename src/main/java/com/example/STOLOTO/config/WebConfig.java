@@ -10,8 +10,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
-
-    /** Енамы в query-параметрах без учёта регистра: ?status=pending. */
     @Override
     public void addFormatters(FormatterRegistry registry) {
         registry.addConverterFactory(new CaseInsensitiveEnumConverterFactory());

@@ -2,6 +2,7 @@ package com.example.STOLOTO.Services;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -14,6 +15,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,11 +45,6 @@ import com.example.STOLOTO.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.type.TypeReference;
 
-/**
- * Рекомендации событий. Собирает профиль пользователя (интересы, история записей, город, уровень,
- * с кем играл) и кандидатов (опубликованные будущие события), а ранжирует {@link RecommendationEngine}.
- * Гость получает популярные ближайшие события.
- */
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -55,11 +52,9 @@ public class RecommendationService {
 
     public static final int DEFAULT_LIMIT = 10;
     public static final int MAX_LIMIT = 50;
-    /** Насколько вперёд смотрим и сколько кандидатов максимум оцениваем. */
     static final Duration HORIZON = Duration.ofDays(60);
     static final int MAX_CANDIDATES = 500;
     static final int MAX_HISTORY = 100;
-    /** Вес записи, которая ещё не подтверждена (заявка, лист ожидания). */
     static final double UNCONFIRMED_WEIGHT = 0.6;
 
     private static final Set<ParticipationStatus> HISTORY = EnumSet.of(ParticipationStatus.CONFIRMED,
@@ -75,7 +70,9 @@ public class RecommendationService {
     private final DtoMapper mapper;
     private final PageCache cache;
 
-    /** Персональная лента «Вам может понравиться». lat/lng — текущее положение, необязательно. */
+    @Value("${app.zone:Asia/Krasnoyarsk}")
+    private ZoneId zone;
+
     public List<RecommendationResponse> forCurrentUser(Integer limit, Double lat, Double lng) {
         int n = limit(limit);
         Instant now = Instant.now();
@@ -87,7 +84,6 @@ public class RecommendationService {
         }
 
         List<Participation> mine = participations.findByUserIdOrderByCreatedAtDesc(me.getId());
-        // уже записан (или отказался/отклонён) — не предлагаем снова; свои события тоже
         Set<Long> seen = mine.stream().map(Participation::getEventId).collect(Collectors.toSet());
         Set<Long> ownedOrgs = organizations.findByOwnerIdOrderByCreatedAtDesc(me.getId()).stream()
                 .map(Organization::getId).collect(Collectors.toSet());
@@ -100,10 +96,8 @@ public class RecommendationService {
         return toResponses(engine.recommend(profile, candidates(fresh), n, now));
     }
 
-    /** «Похожие события» под карточкой. Кэшируется в регионе ленты: он сбрасывается при любом изменении событий. */
     public List<RecommendationResponse> similar(Long eventId, Integer limit) {
         int n = limit(limit);
-        // те же правила видимости, что у карточки события
         eventService.requireViewableCard(eventId);
         return cache.get(CacheRegions.FEED, "similar:" + eventId + "|n=" + n, CacheRegions.FEED_TTL,
                 new TypeReference<List<RecommendationResponse>>() {}, () -> {
@@ -115,8 +109,6 @@ public class RecommendationService {
                     return toResponses(engine.similar(t, candidates(pool), n, now));
                 });
     }
-
-    // ---------- профиль
 
     Profile profile(User me, List<Participation> mine, Double lat, Double lng) {
         List<Participation> history = mine.stream()
@@ -161,7 +153,6 @@ public class RecommendationService {
             cityWeight.put(home, 1.0);
         }
 
-        // с кем играл: подтверждённые участники тех же событий
         Map<Long, Integer> neighbours = new HashMap<>();
         if (!historyEvents.isEmpty()) {
             for (Participation p : participations.findByEventIdInAndStatusIn(historyEvents.keySet(),
@@ -172,8 +163,10 @@ public class RecommendationService {
             }
         }
 
+        Double radius = me.getRadiusKm() == null ? null : me.getRadiusKm().doubleValue();
         return new Profile(Set.copyOf(me.getSportIds()), sportWeight, categoryWeight, cityWeight, home != null,
-                me.getLevel(), neighbours, organizers, lat, lng);
+                me.getLevel(), Map.copyOf(me.getSportLevels()), neighbours, organizers, lat, lng, radius,
+                Set.copyOf(me.getPreferredTimes()), zone);
     }
 
     private static <K> void normalize(Map<K, Double> weights, double total) {
@@ -182,14 +175,11 @@ public class RecommendationService {
         }
     }
 
-    // ---------- кандидаты
-
     private List<Event> upcoming(Instant now) {
         return events.findByStatusAndStartsAtBetweenOrderByStartsAtAsc(EventStatus.PUBLISHED, now, now.plus(HORIZON),
                 PageRequest.of(0, MAX_CANDIDATES));
     }
 
-    /** Подгружает категории спорта и участников одним запросом на всех кандидатов. */
     private List<Candidate> candidates(List<Event> list) {
         if (list.isEmpty()) {
             return List.of();

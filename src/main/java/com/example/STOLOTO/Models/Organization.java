@@ -29,7 +29,6 @@ public class Organization {
     private Long ownerId;
     private String name;
     private String description;
-    /** «Чем занимается организация». */
     private String sportsDescription;
     private String city;
     private String websiteUrl;

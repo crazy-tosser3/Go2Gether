@@ -84,7 +84,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // 60 запросов в минуту — запись
             case "write" -> Bandwidth.classic(60,
                     Refill.greedy(60, Duration.ofMinutes(1)));
-            // 300 запросов в минуту — чтение (жюри не заблокируем)
             default      -> Bandwidth.classic(300,
                     Refill.greedy(300, Duration.ofMinutes(1)));
         };

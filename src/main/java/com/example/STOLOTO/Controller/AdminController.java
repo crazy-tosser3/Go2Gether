@@ -50,8 +50,6 @@ public class AdminController {
         return adminService.dashboard();
     }
 
-    // организации
-
     @GetMapping("/organizations")
     public PageResponse<OrganizationResponse> organizations(
             @RequestParam(required = false) OrganizationStatus status,
@@ -76,8 +74,6 @@ public class AdminController {
             @Valid @RequestBody ReasonRequest request) {
         return organizationService.reject(id, request.reason());
     }
-
-    // события
 
     @GetMapping("/events")
     public PageResponse<EventShortResponse> events(
@@ -110,8 +106,6 @@ public class AdminController {
         return eventService.restore(id);
     }
 
-    // комментарии и журнал
-
     @PostMapping("/comments/{cid}/hide")
     public CommentResponse hideComment(@PathVariable Long cid, @Valid @RequestBody ReasonRequest request) {
         return commentService.hide(cid, request.reason());
@@ -124,8 +118,6 @@ public class AdminController {
             @RequestParam(required = false) Integer size) {
         return auditService.list(targetType, page, size);
     }
-
-    // ---------- кэш
 
     @GetMapping("/cache/stats")
     public CacheStatsResponse cacheStats() {

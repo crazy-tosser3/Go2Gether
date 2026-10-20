@@ -20,10 +20,6 @@ public class RecommendationController {
 
     private final RecommendationService recommendationService;
 
-    /**
-     * С токеном — по интересам, истории записей, городу, уровню и тем, с кем пользователь играл.
-     * Без токена — популярные ближайшие события. lat/lng (необязательно) поднимают события рядом.
-     */
     @GetMapping("/recommendations/events")
     public List<RecommendationResponse> forMe(
             @RequestParam(required = false) Integer limit,
@@ -32,7 +28,6 @@ public class RecommendationController {
         return recommendationService.forCurrentUser(limit, lat, lng);
     }
 
-    /** Похожие по виду спорта, месту, уровню, организатору и составу участников. */
     @GetMapping("/events/{id}/similar")
     public List<RecommendationResponse> similar(@PathVariable Long id,
             @RequestParam(required = false) Integer limit) {

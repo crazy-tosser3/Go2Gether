@@ -16,7 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** Запись на событие. UNIQUE(event_id, user_id): повторная запись переиспользует строку. */
 @Getter
 @Setter
 @NoArgsConstructor

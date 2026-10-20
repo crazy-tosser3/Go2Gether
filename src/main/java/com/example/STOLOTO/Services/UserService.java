@@ -1,12 +1,14 @@
 package com.example.STOLOTO.Services;
 
 import java.time.Instant;
+import java.time.Year;
 import java.util.LinkedHashSet;
 import java.util.List;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.STOLOTO.DTO.event.OrganizerEventResponse;
 import com.example.STOLOTO.DTO.participation.MyParticipationResponse;
@@ -37,6 +39,8 @@ import tools.jackson.core.type.TypeReference;
 @Transactional
 @RequiredArgsConstructor
 public class UserService {
+    static final int MIN_BIRTH_YEAR = 1920;
+    static final int MIN_AGE = 10;
 
     private final UserRepository users;
     private final EventRepository events;
@@ -52,6 +56,7 @@ public class UserService {
     private final DtoMapper mapper;
     private final PageCache cache;
     private final CacheRegions regions;
+    private final AvatarStorage avatars;
 
     @Transactional(readOnly = true)
     public PublicUserResponse publicProfile(Long id) {
@@ -84,31 +89,60 @@ public class UserService {
             u.setAbout(blankToNull(r.bio()));
         }
         if (r.avatarUrl() != null) {
-            u.setAvatarUrl(blankToNull(r.avatarUrl()));
+            String avatarUrl = blankToNull(r.avatarUrl());
+            if (avatarUrl != null && !avatarUrl.equals(u.getAvatarUrl()) && avatars.isUploaded(avatarUrl)) {
+                throw ApiException.validation("avatar_url", "фото загружается через POST /users/me/avatar");
+            }
+            replaceAvatar(u, avatarUrl);
         }
         if (r.sportIds() != null) {
             u.setSportIds(new LinkedHashSet<>(sportService.validateIds(r.sportIds(), "sport_ids")));
+            u.getSportLevels().keySet().retainAll(u.getSportIds());
         }
         if (r.level() != null) {
             u.setLevel(r.level());
         }
-        u.setUpdatedAt(Instant.now());
-        regions.userChanged(u.getId());
-        return mapper.toUser(users.save(u));
+        if (r.sportLevels() != null) {
+            u.getSportLevels().clear();
+            r.sportLevels().forEach((sportId, level) -> {
+                if (sportId == null || level == null || !u.getSportIds().contains(sportId)) {
+                    throw ApiException.validation("sport_levels",
+                            "уровень можно указать только для видов из sport_ids: " + sportId);
+                }
+                u.getSportLevels().put(sportId, level);
+            });
+        }
+        if (r.birthYear() != null) {
+            int maxYear = Year.now().getValue() - MIN_AGE;
+            if (r.birthYear() < MIN_BIRTH_YEAR || r.birthYear() > maxYear) {
+                throw ApiException.validation("birth_year",
+                        "должен быть от " + MIN_BIRTH_YEAR + " до " + maxYear);
+            }
+            u.setBirthYear(r.birthYear());
+        }
+        if (r.radiusKm() != null) {
+            u.setRadiusKm(r.radiusKm());
+        }
+        if (r.preferredTimes() != null) {
+            if (r.preferredTimes().contains(null)) {
+                throw ApiException.validation("preferred_times", "неизвестное значение");
+            }
+            u.getPreferredTimes().clear();
+            u.getPreferredTimes().addAll(r.preferredTimes());
+        }
+        if (r.preferredAgeFrom() != null) {
+            u.setPreferredAgeFrom(r.preferredAgeFrom());
+        }
+        if (r.preferredAgeTo() != null) {
+            u.setPreferredAgeTo(r.preferredAgeTo());
+        }
+        if (u.getPreferredAgeFrom() != null && u.getPreferredAgeTo() != null
+                && u.getPreferredAgeFrom() > u.getPreferredAgeTo()) {
+            throw ApiException.validation("preferred_age_from", "не может быть больше preferred_age_to");
+        }
+        return saveProfile(u);
     }
 
-    /**
-     * Удаление аккаунта (DELETE /users/me). Строка users не удаляется: на неё ссылаются события,
-     * организации и журнал модерации (ON DELETE RESTRICT), а записи и обсуждения должны остаться
-     * в истории. Вместо этого аккаунт деактивируется и обезличивается:
-     * <ul>
-     *   <li>предстоящие опубликованные события пользователя отменяются, участники получают уведомление;</li>
-     *   <li>его активные записи отменяются, освободившиеся места уходят листу ожидания;</li>
-     *   <li>личные данные стираются, email освобождается для новой регистрации;</li>
-     *   <li>уведомления удаляются, текущий токен отзывается (остальные перестают работать из-за is_active).</li>
-     * </ul>
-     * Комментарии остаются и показываются от «Удалённого пользователя».
-     */
     public void deleteMe(DeleteAccountRequest request) {
         User u = currentUser.require();
         if (!passwordEncoder.matches(request.password(), u.getPasswordHash())) {
@@ -122,7 +156,7 @@ public class UserService {
         }
         if (!organizations.findByOwnerIdOrderByCreatedAtDesc(u.getId()).isEmpty()) {
             throw ApiException.conflict("HAS_ORGANIZATIONS",
-                    "Сначала передайте или удалите свои организации — у организации должен быть владелец");
+                    "Сначала передайте или удалите свою организацию");
         }
 
         events.findByOrganizerUserIdAndStatusOrderByStartsAtDesc(u.getId(), EventStatus.PUBLISHED).stream()
@@ -134,20 +168,49 @@ public class UserService {
         u.setActive(false);
         u.setName("Удалённый пользователь");
         u.setEmail("deleted+" + u.getId() + "@deleted.local");
-        // Не хеш ни одного пароля — войти по паролю невозможно
         u.setPasswordHash("!deleted");
         u.setAbout(null);
         u.setCity(null);
-        u.setAvatarUrl(null);
+        replaceAvatar(u, null);
         u.setLevel(null);
         u.getSportIds().clear();
+        u.getSportLevels().clear();
+        u.getPreferredTimes().clear();
+        u.setBirthYear(null);
+        u.setRadiusKm(null);
+        u.setPreferredAgeFrom(null);
+        u.setPreferredAgeTo(null);
         u.setUpdatedAt(Instant.now());
 
         currentUser.tokenId().ifPresent(jwtService::revoke);
         regions.userChanged(u.getId());
     }
 
-    /** События, где я организатор: созданные лично и от моих организаций. */
+    public UserResponse uploadAvatar(MultipartFile file) {
+        User u = currentUser.require();
+        replaceAvatar(u, avatars.store(file));
+        return saveProfile(u);
+    }
+
+    public UserResponse deleteAvatar() {
+        User u = currentUser.require();
+        replaceAvatar(u, null);
+        return saveProfile(u);
+    }
+
+    private void replaceAvatar(User u, String avatarUrl) {
+        if (u.getAvatarUrl() != null && !u.getAvatarUrl().equals(avatarUrl)) {
+            avatars.deleteAfterCommit(u.getAvatarUrl());
+        }
+        u.setAvatarUrl(avatarUrl);
+    }
+
+    private UserResponse saveProfile(User u) {
+        u.setUpdatedAt(Instant.now());
+        regions.userChanged(u.getId());
+        return mapper.toUser(users.save(u));
+    }
+
     @Transactional(readOnly = true)
     public List<OrganizerEventResponse> myEvents() {
         Long me = currentUser.require().getId();

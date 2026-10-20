@@ -43,7 +43,6 @@ public class ParticipationService {
     private final PageCache cache;
     private final CacheRegions regions;
 
-
     public JoinResponse join(Long eventId, String message) {
         User me = currentUser.require();
         Event e = lockEvent(eventId);
@@ -123,7 +122,6 @@ public class ParticipationService {
         return mapper.toParticipation(p);
     }
 
-
     public void cancelAllForUser(Long userId) {
         participations.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .filter(p -> p.getStatus().isActive())
@@ -148,7 +146,6 @@ public class ParticipationService {
         return participations.findByEventIdAndUserId(eventId, me.getId()).map(mapper::toParticipation).orElse(null);
     }
 
-    /** Подтверждённые участники. Публично — имена и количество; организатору и админу — контакты. */
     @Transactional(readOnly = true)
     public ParticipantsResponse participants(Long eventId) {
         var card = eventService.requireViewableCard(eventId);
@@ -158,7 +155,6 @@ public class ParticipationService {
         if (privileged) {
             return loadParticipants(eventId, card.full().capacity(), true);
         }
-        // Публичный список (имена и количество) одинаков для всех — кэшируем
         return cache.get(CacheRegions.event(eventId), "participants", CacheRegions.PARTICIPANTS_TTL,
                 new TypeReference<ParticipantsResponse>() {},
                 () -> loadParticipants(eventId, card.full().capacity(), false));
@@ -172,7 +168,6 @@ public class ParticipationService {
         return new ParticipantsResponse(list.size(), capacity, list);
     }
 
-    /** Заявки на рассмотрение: организатор (админ — только просмотр). */
     @Transactional(readOnly = true)
     public List<ParticipantResponse> requests(Long eventId, ParticipationStatus status) {
         User me = currentUser.require();
@@ -218,7 +213,6 @@ public class ParticipationService {
     private record Decision(Participation participation, Event event) {
     }
 
-    /** Общие проверки approve/reject: организатор → pending → событие активно. */
     private Decision decide(Long participationId) {
         User me = currentUser.require();
         Participation p = participations.findById(participationId)
@@ -248,7 +242,6 @@ public class ParticipationService {
         return e.getCapacity() != null && mapper.count(e.getId(), ParticipationStatus.CONFIRMED) >= e.getCapacity();
     }
 
-    /** Место освободилось: первый в листе ожидания → confirmed (open) или pending (approval). */
     private void promoteFromWaitlist(Event e) {
         if (e.getStatus() != EventStatus.PUBLISHED || e.isPast()) {
             return;

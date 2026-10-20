@@ -21,9 +21,9 @@ public record EventShortResponse(
         Integer capacity,
         long confirmedCount,
         EventStatus status,
+        String unavailableReason,
         boolean isPast,
         boolean isEdited,
-        /** Приблизительно (±1 км), для точек на карте. Точные — в карточке, только участникам. */
         Double lat,
         Double lng) {
 }

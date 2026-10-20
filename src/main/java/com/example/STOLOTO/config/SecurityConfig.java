@@ -68,7 +68,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, API + "/auth/demo-accounts").permitAll()
                         .requestMatchers(HttpMethod.POST, API + "/auth/register", API + "/auth/login").permitAll()
                         .requestMatchers(API + "/admin/**").hasRole("ADMIN")
-                        // GET, требующие входа (стоят раньше публичных шаблонов)
                         .requestMatchers(HttpMethod.GET,
                                 API + "/auth/me",
                                 API + "/users/me/**",
@@ -76,12 +75,11 @@ public class SecurityConfig {
                                 API + "/events/*/my-participation",
                                 API + "/events/*/requests",
                                 API + "/notifications").authenticated()
-                        // публичное чтение
                         .requestMatchers(HttpMethod.GET,
                                 API + "/events", API + "/events/*",
                                 API + "/events/*/participants", API + "/events/*/comments",
                                 API + "/events/*/similar", API + "/recommendations/events",
-                                API + "/users/*",
+                                API + "/users/*", API + "/avatars/*",
                                 API + "/sports", API + "/sports/*",
                                 API + "/safety/banners", API + "/safety/banners/*",
                                 API + "/organizations", API + "/organizations/*", API + "/organizations/*/events")
@@ -90,7 +88,6 @@ public class SecurityConfig {
                 .oauth2ResourceServer(rs -> rs
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .bearerTokenResolver(request -> {
-                            // 1. Сначала ищем токен в куки
                             if (request.getCookies() != null) {
                                 for (var cookie : request.getCookies()) {
                                     if ("jwt".equals(cookie.getName())) {
@@ -98,7 +95,6 @@ public class SecurityConfig {
                                     }
                                 }
                             }
-                            // 2. Если куки нет — смотрим заголовок Authorization: Bearer (для Swagger)
                             String header = request.getHeader("Authorization");
                             if (header != null && header.startsWith("Bearer ")) {
                                 return header.substring(7);

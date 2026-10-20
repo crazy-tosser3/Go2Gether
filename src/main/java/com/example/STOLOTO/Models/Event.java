@@ -28,7 +28,6 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Ровно одно из двух заполнено (CHECK chk_one_organizer). */
     private Long organizerUserId;
     private Long organizerOrgId;
 
@@ -67,7 +66,6 @@ public class Event {
     private long version;
 
     private Instant createdAt;
-    /** Меняется только при редактировании организатором — признак «изменено». */
     private Instant updatedAt;
 
     public OrganizerType organizerType() {
@@ -82,7 +80,6 @@ public class Event {
         return updatedAt != null && createdAt != null && updatedAt.isAfter(createdAt.plusSeconds(1));
     }
 
-    /** Причина, по которой событие недоступно (для баннера и 410). */
     public String unavailableReason() {
         return status == EventStatus.CANCELLED ? cancelReason : moderationReason;
     }

@@ -37,7 +37,6 @@ public class SafetyService {
     private final SafetyBannerRepository banners;
     private final SportRepository sports;
 
-
     @Transactional(readOnly = true)
     @Cacheable(cacheNames = CACHE,
             key = "'feed:' + (#category == null ? '' : #category.name()) + ':' + (#sportId == null ? '' : #sportId)")
@@ -60,7 +59,6 @@ public class SafetyService {
                 .orElseThrow(() -> ApiException.notFound("Материал не найден"));
         return toDetails(b);
     }
-
 
     @Transactional(readOnly = true)
     public List<SafetyBannerCard> adminList() {
@@ -99,7 +97,6 @@ public class SafetyService {
     public void delete(Long id) {
         banners.delete(require(id));
     }
-
 
     private SafetyBanner require(Long id) {
         return banners.findById(id).orElseThrow(() -> ApiException.notFound("Материал не найден"));

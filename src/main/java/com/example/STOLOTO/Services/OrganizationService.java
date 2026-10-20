@@ -48,8 +48,6 @@ public class OrganizationService {
     private final PageCache cache;
     private final CacheRegions regions;
 
-    // ---------- владелец (у одного владельца может быть несколько организаций)
-
     public OrganizationResponse create(CreateOrganizationRequest r) {
         User me = currentUser.require();
         Organization o = new Organization();
@@ -123,8 +121,6 @@ public class OrganizationService {
         return mapper.toOrganization(o, true);
     }
 
-    // ---------- публичное
-
     @Transactional(readOnly = true)
     public PageResponse<OrganizationResponse> catalog(String q, String sport, String city, Integer page,
             Integer size) {
@@ -145,7 +141,6 @@ public class OrganizationService {
         if (viewerIsPrivileged(id)) {
             return mapper.toOrganization(require(id), true);
         }
-        // Публичная страница одинакова для всех гостей и пользователей — кэшируем
         return cache.get(CacheRegions.org(id), "public", CacheRegions.ORG_TTL,
                 new TypeReference<OrganizationResponse>() {},
                 () -> mapper.toOrganization(requireVisible(id), false));
@@ -170,7 +165,6 @@ public class OrganizationService {
                 .toList();
     }
 
-    /** Админ или владелец — им нужна непубличная версия (статус, причина отклонения). */
     private boolean viewerIsPrivileged(Long orgId) {
         return currentUser.find()
                 .map(u -> u.getRole() == Role.ADMIN || organizations.existsByIdAndOwnerId(orgId, u.getId()))
@@ -181,7 +175,6 @@ public class OrganizationService {
         return s == null || s.isBlank() ? "" : s.trim().toLowerCase();
     }
 
-    /** Для POST /events и комментариев от имени организации: владелец + approved, иначе 403. */
     @Transactional(readOnly = true)
     public Organization requireApprovedOwned(Long orgId, Long userId) {
         Organization o = organizations.findById(orgId)
@@ -194,8 +187,6 @@ public class OrganizationService {
         }
         return o;
     }
-
-    // ---------- админ
 
     @Transactional(readOnly = true)
     public PageResponse<OrganizationResponse> adminList(OrganizationStatus status, String q, Integer page,
@@ -245,8 +236,6 @@ public class OrganizationService {
         return mapper.toOrganization(o, true);
     }
 
-    // ---------- helpers
-
     private Organization require(Long id) {
         return organizations.findById(id).orElseThrow(() -> ApiException.notFound("Организация не найдена"));
     }
@@ -269,7 +258,6 @@ public class OrganizationService {
         return o;
     }
 
-    /** Не approved → 404 для всех, кроме владельца и админа. */
     private Organization requireVisible(Long id) {
         Organization o = require(id);
         if (o.getStatus() != OrganizationStatus.APPROVED && !isPrivileged(o)) {

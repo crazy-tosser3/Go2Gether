@@ -40,12 +40,10 @@ public class SportService {
     private final DtoMapper mapper;
     private final PageCache cache;
 
-    /** lower, trim, ё→е, схлопывание пробелов. */
     public static String normalize(String name) {
         return name.trim().toLowerCase(Locale.ROOT).replace('ё', 'е').replaceAll("\\s+", " ");
     }
 
-    /** Каталог/автодополнение. Результаты кэшируются в Redis по строке запроса. */
     @Transactional(readOnly = true)
     @Cacheable(cacheNames = CACHE, key = "#q == null ? '' : #q.trim().toLowerCase()")
     public List<SportResponse> search(String q) {
@@ -79,7 +77,6 @@ public class SportService {
         return sports.findById(id).orElseThrow(() -> ApiException.notFound("Направление не найдено"));
     }
 
-    /** Дедуп по normalized_name: новое направление — новая строка в sports, без изменения кода. */
     @CacheEvict(cacheNames = CACHE, allEntries = true)
     public Sport findOrCreate(String name, SportCategory category, Long createdBy) {
         if (name == null || name.isBlank()) {
@@ -98,7 +95,6 @@ public class SportService {
         });
     }
 
-    /** Все переданные id направлений должны существовать (иначе 422). */
     public List<Long> validateIds(Collection<Long> ids, String field) {
         List<Long> distinct = ids.stream().distinct().toList();
         for (Long id : distinct) {

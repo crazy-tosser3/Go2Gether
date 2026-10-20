@@ -48,8 +48,6 @@ public class EventController {
     private final ParticipationService participationService;
     private final CommentService commentService;
 
-    // события
-
     @GetMapping
     public PageResponse<EventShortResponse> search(
             @RequestParam(required = false) String q,
@@ -88,8 +86,6 @@ public class EventController {
         return eventService.cancel(id, request.reason());
     }
 
-    // запись и заявки
-
     @PostMapping("/{id}/join")
     @ResponseStatus(HttpStatus.CREATED)
     public JoinResponse join(@PathVariable Long id, @Valid @RequestBody(required = false) JoinRequest request) {
@@ -116,8 +112,6 @@ public class EventController {
             @RequestParam(required = false) ParticipationStatus status) {
         return participationService.requests(id, status);
     }
-
-    // обсуждение
 
     @GetMapping("/{id}/comments")
     public PageResponse<CommentResponse> comments(@PathVariable Long id,

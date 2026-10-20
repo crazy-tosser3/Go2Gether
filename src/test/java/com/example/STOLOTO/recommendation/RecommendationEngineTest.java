@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -15,6 +16,7 @@ import com.example.STOLOTO.DTO.recommendation.RecommendationReason;
 import com.example.STOLOTO.Models.Event;
 import com.example.STOLOTO.Models.Level;
 import com.example.STOLOTO.Models.SportCategory;
+import com.example.STOLOTO.Models.TimeSlot;
 import com.example.STOLOTO.recommendation.RecommendationEngine.Candidate;
 import com.example.STOLOTO.recommendation.RecommendationEngine.Profile;
 import com.example.STOLOTO.recommendation.RecommendationEngine.Scored;
@@ -95,6 +97,53 @@ class RecommendationEngineTest {
     }
 
     @Test
+    @DisplayName("Уровень по виду спорта важнее общего уровня")
+    void sportLevelOverridesGeneral() {
+        Profile p = new Profile(Set.of(), Map.of(), Map.of(), Map.of(), false, Level.BEGINNER,
+                Map.of(TENNIS, Level.PRO), Map.of(), Set.of(), null, null, null, Set.of(), ZoneOffset.UTC);
+        var proTennis = candidate(event(1, TENNIS, null, Level.PRO, 5), SportCategory.INDIVIDUAL, Set.of(), 0);
+        var beginnerTennis = candidate(event(2, TENNIS, null, Level.BEGINNER, 5), SportCategory.INDIVIDUAL, Set.of(), 0);
+
+        List<Scored> result = engine.recommend(p, List.of(beginnerTennis, proTennis), 10, NOW);
+
+        assertThat(result.getFirst().candidate().event().getId()).isEqualTo(1L);
+        assertThat(result.getFirst().reasons()).contains(RecommendationReason.LEVEL_MATCH);
+    }
+
+    @Test
+    @DisplayName("Удобное время даёт бонус и причину preferred_time")
+    void preferredTime() {
+        Profile p = new Profile(Set.of(), Map.of(), Map.of(), Map.of(), false, null, Map.of(), Map.of(), Set.of(),
+                null, null, null, Set.of(TimeSlot.EVENING), ZoneOffset.UTC);
+        var evening = candidate(event(1, CHESS, null, null, 5, 19), SportCategory.MIND, Set.of(), 0);
+        var morning = candidate(event(2, CHESS, null, null, 5, 8), SportCategory.MIND, Set.of(), 0);
+
+        List<Scored> result = engine.recommend(p, List.of(morning, evening), 10, NOW);
+
+        assertThat(result.getFirst().candidate().event().getId()).isEqualTo(1L);
+        assertThat(result.getFirst().reasons()).contains(RecommendationReason.PREFERRED_TIME);
+        assertThat(result.getLast().reasons()).doesNotContain(RecommendationReason.PREFERRED_TIME);
+    }
+
+    @Test
+    @DisplayName("Радиус из профиля задаёт границу «рядом»")
+    void radiusFromProfile() {
+        var e = event(1, CHESS, null, null, 5);
+        e.setLat(56.10);
+        e.setLng(92.85);
+        var c = candidate(e, SportCategory.MIND, Set.of(), 0);
+        Profile near = new Profile(Set.of(), Map.of(), Map.of(), Map.of(), false, null, Map.of(), Map.of(), Set.of(),
+                56.01, 92.85, 20.0, Set.of(), ZoneOffset.UTC);
+        Profile far = new Profile(Set.of(), Map.of(), Map.of(), Map.of(), false, null, Map.of(), Map.of(), Set.of(),
+                56.01, 92.85, 5.0, Set.of(), ZoneOffset.UTC);
+
+        assertThat(engine.recommend(near, List.of(c), 1, NOW).getFirst().reasons())
+                .contains(RecommendationReason.NEARBY);
+        assertThat(engine.recommend(far, List.of(c), 1, NOW).getFirst().reasons())
+                .doesNotContain(RecommendationReason.NEARBY);
+    }
+
+    @Test
     @DisplayName("Расстояние: Томск — Новосибирск около 200 км")
     void distance() {
         assertThat(RecommendationEngine.distanceKm(56.4846, 84.9476, 55.0084, 82.9357)).isBetween(190.0, 215.0);
@@ -103,12 +152,18 @@ class RecommendationEngineTest {
 
     private static Profile profile(Set<Long> interests, Map<Long, Double> sports, Map<String, Double> cities,
             Level level, Map<Long, Integer> neighbours, Set<String> organizers) {
-        return new Profile(interests, sports, Map.of(), cities, !cities.isEmpty(), level, neighbours, organizers, null,
-                null);
+        return new Profile(interests, sports, Map.of(), cities, !cities.isEmpty(), level, Map.of(), neighbours,
+                organizers, null, null, null, Set.of(), ZoneOffset.UTC);
     }
 
     private static Candidate candidate(Event e, SportCategory category, Set<Long> participants, long confirmed) {
         return new Candidate(e, category, participants, confirmed);
+    }
+
+    private static Event event(long id, long sportId, String city, Level level, int daysAhead, int hourUtc) {
+        Event e = event(id, sportId, city, level, daysAhead);
+        e.setStartsAt(NOW.plus(Duration.ofDays(daysAhead)).atZone(ZoneOffset.UTC).withHour(hourUtc).toInstant());
+        return e;
     }
 
     private static Event event(long id, long sportId, String city, Level level, int daysAhead) {

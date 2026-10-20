@@ -42,6 +42,10 @@ services:
       - "127.0.0.1:8001:8001"
     env_file:
       - docker-env
+    environment:
+      AVATARS_DIR: /app/data/avatars
+    volumes:
+      - avatars_data:/app/data/avatars
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,3 +55,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  avatars_data:

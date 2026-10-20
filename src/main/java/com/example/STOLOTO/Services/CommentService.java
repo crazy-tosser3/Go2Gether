@@ -45,7 +45,7 @@ public class CommentService {
         eventService.requireViewableCard(eventId);
         var pageable = PageResponse.pageable(page, size, Sort.unsorted());
         if (currentUser.isAdmin()) {
-            return load(eventId, pageable, true); // админ видит причины скрытия — мимо кэша
+            return load(eventId, pageable, true);
         }
         return cache.get(CacheRegions.comments(eventId), "p" + pageable.getPageNumber() + ":" + pageable.getPageSize(),
                 CacheRegions.COMMENTS_TTL, new TypeReference<PageResponse<CommentResponse>>() {},
@@ -77,7 +77,6 @@ public class CommentService {
         c.setEventId(eventId);
         c.setAuthorId(me.getId());
         c.setAsOrganizationId(r.asOrganizationId());
-        // Один уровень вложенности: ответ на ответ привязываем к корневому комментарию
         c.setParentId(parent == null ? null : parent.getParentId() != null ? parent.getParentId() : parent.getId());
         c.setText(r.text().trim());
         c.setCreatedAt(Instant.now());

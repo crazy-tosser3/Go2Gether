@@ -47,8 +47,6 @@ class SafetyTests {
     @Autowired UserRepository users;
     @Autowired SafetyBannerRepository banners;
 
-    // ---------- публичное чтение
-
     @Test
     @DisplayName("TC-070: GET /safety/banners без токена → 200, контент из V13")
     void feedNoToken_returns200() throws Exception {
@@ -78,8 +76,6 @@ class SafetyTests {
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- права на админку
-
     @Test
     @DisplayName("TC-073: POST /admin/safety/banners без токена → 401")
     void anonymousCreate_returns401() throws Exception {
@@ -98,8 +94,6 @@ class SafetyTests {
                         .content(VALID_BANNER))
                 .andExpect(status().isForbidden());
     }
-
-    // ---------- админка
 
     @Test
     @DisplayName("TC-075: ADMIN создаёт баннер → 201, позиции слайдов 1..N")

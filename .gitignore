@@ -37,3 +37,7 @@ build/
 
 ### Local secrets ###
 .env
+
+### Uploaded avatars ###
+data/
+migrations-wip.patch

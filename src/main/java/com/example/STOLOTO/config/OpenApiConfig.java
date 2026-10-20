@@ -19,10 +19,6 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 
-/**
- * Swagger UI: /swagger-ui.html, схема: /v3/api-docs.
- * Токен из POST /api/v1/auth/login вставляется кнопкой «Authorize» (без префикса Bearer).
- */
 @Configuration
 public class OpenApiConfig {
 
@@ -43,13 +39,11 @@ public class OpenApiConfig {
                 .addSecurityItem(new SecurityRequirement().addList(BEARER));
     }
 
-    /** Springdoc строит схемы своим Jackson 2 — задаём тот же snake_case, что у API. */
     @Bean
     ModelResolver snakeCaseModelResolver() {
         return new ModelResolver(Json.mapper().copy().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE));
     }
 
-    /** API пишет енамы в нижнем регистре (open, pending ...) — показываем так же. */
     @Bean
     OpenApiCustomizer lowercaseEnums() {
         return openApi -> {

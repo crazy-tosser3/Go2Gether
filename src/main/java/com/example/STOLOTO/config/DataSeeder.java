@@ -39,7 +39,6 @@ public class DataSeeder implements CommandLineRunner {
         }
         log.info("DataSeeder: наполняем базу демо-данными…");
 
-
         String hash = passwordEncoder.encode("Demo1234!");
 
         User userAlexey = user("user@demo.local",  hash, "Алексей Петров",
@@ -98,12 +97,10 @@ public class DataSeeder implements CommandLineRunner {
         cycling     = sports.get(10);
         tableTennis = sports.get(11);
 
-        // Интересы пользователей
         userAlexey.setSportIds(Set.of(football.getId(), running.getId(), basketball.getId()));
         userMaria .setSportIds(Set.of(yoga.getId(), chess.getId(), volleyball.getId()));
         userOrg   .setSportIds(Set.of(football.getId()));
         userRepo.saveAll(List.of(userAlexey, userMaria, userOrg));
-
 
         Organization orgApproved = org(userOrg.getId(),
                 "ФК «Дворовые легенды»",
@@ -128,10 +125,8 @@ public class DataSeeder implements CommandLineRunner {
         List<Organization> orgs = orgRepo.saveAll(List.of(orgApproved, orgPending, orgRejected));
         orgApproved = orgs.get(0);
 
-
         Instant now = Instant.now();
 
-        // OPEN события (5 штук)
         Event evRun = event(userAlexey.getId(), null,
                 "Утренняя пробежка в парке",
                 "Бегаем в лёгком темпе, 5 км. Подходит для новичков!",
@@ -167,7 +162,6 @@ public class DataSeeder implements CommandLineRunner {
                 "Красноярск", "Набережная, лестница у ж/д моста",
                 JoinMode.OPEN, null, "Велосипед и шлем обязательны", Level.AMATEUR, EventStatus.PUBLISHED);
 
-        // APPROVAL события (5 штук)
         Event evFootball = event(null, orgApproved.getId(),
                 "Товарищеский матч по футболу",
                 "Ищем команду соперника. 11 на 11, 2 тайма по 45 минут.",
@@ -203,7 +197,6 @@ public class DataSeeder implements CommandLineRunner {
                 "Красноярск", "Кафе-клуб «Пинг», ул. Ленина 30",
                 JoinMode.APPROVAL, 16, null, Level.BEGINNER, EventStatus.PUBLISHED);
 
-        // Снятое с публикации событие (для демо сценария модерации)
         Event evBasket = event(userAlexey.getId(), null,
                 "Баскетбол 3×3",
                 "Играем во дворе, нужны ещё двое.",
@@ -220,34 +213,28 @@ public class DataSeeder implements CommandLineRunner {
                 evBasket));
 
         evRun         = events.get(0);
-        evYoga        = events.get(1);  // не используется дальше, но сохранён
+        evYoga        = events.get(1);
         evVolley      = events.get(2);
-        evCharge      = events.get(3);  // не используется дальше, но сохранён
+        evCharge      = events.get(3);
         evCycle       = events.get(4);
         evFootball    = events.get(5);
-        evOrient      = events.get(6);  // не используется дальше, но сохранён
+        evOrient      = events.get(6);
         evTennis      = events.get(7);
         evSwim        = events.get(8);
         evTableTennis = events.get(9);
         evBasket      = events.get(10);
 
-
-
-        // user2 → пробежка (OPEN → сразу CONFIRMED)
         partRepo.save(participation(evRun.getId(), userMaria.getId(),
                 ParticipationStatus.CONFIRMED, null));
 
-        // user → футбол PENDING
         partRepo.save(participation(evFootball.getId(), userAlexey.getId(),
                 ParticipationStatus.PENDING, "Играю в полузащите, опыт 3 года"));
 
-        // user2 → футбол REJECTED
         Participation rejPart = participation(evFootball.getId(), userMaria.getId(),
                 ParticipationStatus.REJECTED, "Хочу попробовать, я новичок");
         rejPart.setDecidedAt(now.minus(30, ChronoUnit.MINUTES));
         partRepo.save(rejPart);
 
-        // Pending-заявки для демо рассмотрения организацией (DEMO-04)
         partRepo.save(participation(evTennis.getId(), userMaria.getId(),
                 ParticipationStatus.PENDING, "Играю 2 года, есть своя ракетка"));
 
@@ -259,7 +246,6 @@ public class DataSeeder implements CommandLineRunner {
 
         partRepo.save(participation(evTableTennis.getId(), userAlexey.getId(),
                 ParticipationStatus.PENDING, "Первый раз участвую в турнире, но в пинг-понг играю давно"));
-
 
         commentRepo.saveAll(List.of(
                 comment(evRun.getId(), userMaria.getId(),
@@ -276,9 +262,6 @@ public class DataSeeder implements CommandLineRunner {
                         "Отличная идея! Можно взять велосипед напрокат?", now.minus(2, ChronoUnit.HOURS))
         ));
 
-        // ------------------------------------------------------------------
-        // 7. УВЕДОМЛЕНИЯ
-        // ------------------------------------------------------------------
         notifRepo.saveAll(List.of(
                 notif(userMaria.getId(), NotificationType.REGISTRATION_REJECTED,
                         "Заявка отклонена",
@@ -301,7 +284,6 @@ public class DataSeeder implements CommandLineRunner {
         log.info("DataSeeder: готово. Пользователей: {}, видов спорта: {}, событий: {}",
                 userRepo.count(), sportRepo.count(), eventRepo.count());
     }
-
 
     private User user(String email, String hash, String name, String about,
                       Role role, Level level) {

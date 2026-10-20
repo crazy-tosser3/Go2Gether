@@ -8,7 +8,7 @@ REST API для поиска и проведения любительских с
 |---|---|
 | Язык / фреймворк | Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator) |
 | Безопасность | Spring Security, OAuth2 Resource Server (JWT HS256), Argon2id (`argon2-jvm`), Bucket4j |
-| БД | PostgreSQL 18, Flyway (миграции `V01`–`V11`) |
+| БД | PostgreSQL 18, Flyway (миграции `V01`–`V16`) |
 | Кэш / сессии | Redis 7 (Spring Cache + собственный кэш страниц, белый список JWT) |
 | Документация | springdoc-openapi (Swagger UI) |
 | Тесты | JUnit 5, MockMvc, Testcontainers (Postgres + Redis) |
@@ -49,6 +49,9 @@ REST API для поиска и проведения любительских с
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / пусто | Redis |
 | `JWT_SECRET` | dev-секрет в `application.properties` | Base64, не меньше 32 байт после декодирования |
 | `JWT_TTL` | `24h` | Время жизни токена |
+| `AVATARS_DIR` | `data/avatars` | Куда сохраняются загруженные аватары |
+| `AVATARS_PUBLIC_URL` | пусто | Базовый URL для `avatar_url`, например `https://sport.example.com/api/v1/avatars`; пусто — по адресу запроса |
+| `APP_ZONE` | `Asia/Krasnoyarsk` | Часовой пояс для `preferred_times` в подборке |
 
 ### Демо-аккаунты
 
@@ -83,12 +86,13 @@ nginx.conf, proxy_params           конфиг reverse proxy
 
 ### Предметная область
 
-- **Пользователи.** Регистрация, вход, профиль (город, о себе, аватар, уровень, интересующие направления), публичный профиль с созданными событиями. Удаление аккаунта — мягкое: пользователь деактивируется и обезличивается, его предстоящие события отменяются с уведомлением участников, записи отменяются, освободившиеся места уходят листу ожидания. Нельзя удалить последнего админа, демо-аккаунт и владельца организаций.
+- **Пользователи.** Регистрация, вход, профиль (город, о себе, аватар — пресет или загруженное фото, уровень, интересующие направления и ответы онбординга: год рождения, уровень по каждому виду, радиус, удобное время, возраст компании), публичный профиль с созданными событиями. Удаление аккаунта — мягкое: пользователь деактивируется и обезличивается, его предстоящие события отменяются с уведомлением участников, записи отменяются, освободившиеся места уходят листу ожидания. Нельзя удалить последнего админа, демо-аккаунт и владельца организаций.
 - **Направления спорта.** Каталог с категориями и иконками, поиск/автодополнение. Пользователь может добавить своё направление; дубли отсекаются по нормализованному имени (`trim`, нижний регистр, `ё→е`, схлопывание пробелов) и уникальному индексу.
 - **Организации.** Создание, редактирование, повторная подача после отказа. Модерация админом: `PENDING → APPROVED / REJECTED` с причиной. Неодобренная организация видна только владельцу и админу, остальным — 404. Публиковать события и писать комментарии от имени организации может только владелец одобренной организации.
 - **Мероприятия.** Организатор — либо пользователь, либо организация (`CHECK` в БД). Лента с фильтрами (текст, направление, город, даты, уровень и т. д.) и пагинацией. Режимы записи `open` и `approval`, лимит мест, отмена организатором с причиной. Снятые/удалённые/отменённые события видны админу, организатору и записавшимся, остальным — `410 EVENT_UNAVAILABLE`.
 - **Запись на события.** Сразу подтверждение (`open`), заявка (`approval`) или лист ожидания, если мест нет. При освобождении места первый в очереди автоматически продвигается. Организатор принимает/отклоняет заявки с причиной. Нельзя записаться на своё или прошедшее событие и дважды на одно событие.
 - **Обсуждения.** Комментарии к событию с одним уровнем вложенности (ответ на ответ привязывается к корню), правка и удаление автором, ответ от имени организации, уведомление автору родительского комментария.
+- **Рекомендации.** Персональная подборка событий (интересы, история записей, город, уровень, с кем играл) и «похожие события» под карточкой, с кодами причин для UI. См. [docs/recommendations.md](docs/recommendations.md).
 - **Уведомления.** Внутренний «колокольчик»: заявки, решения, продвижение из очереди, изменения/отмена/снятие событий, решения по организациям, ответы в обсуждениях.
 - **Админка.** Дашборд со счётчиками, модерация организаций, снятие/удаление/восстановление событий, скрытие комментариев с причиной, журнал модерации (`audit_log`), статистика и сброс кэша.
 
@@ -114,13 +118,14 @@ nginx.conf, proxy_params           конфиг reverse proxy
 | Группа | Эндпоинты |
 |---|---|
 | Auth | `GET /auth/demo-accounts`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` |
-| Пользователи | `GET /users/{id}`, `PATCH /users/me`, `DELETE /users/me`, `GET /users/me/events`, `GET /users/me/participations` |
+| Пользователи | `GET /users/{id}`, `PATCH /users/me`, `DELETE /users/me`, `POST`/`DELETE /users/me/avatar`, `GET /avatars/{name}`, `GET /users/me/events`, `GET /users/me/participations` |
 | Направления | `GET /sports`, `GET /sports/{id}`, `POST /sports` |
 | События | `GET /events`, `GET /events/{id}`, `POST /events`, `PATCH /events/{id}`, `POST /events/{id}/cancel` |
 | Запись | `POST`/`DELETE /events/{id}/join`, `GET /events/{id}/my-participation`, `GET /events/{id}/participants`, `GET /events/{id}/requests`, `POST /participations/{pid}/approve`, `POST /participations/{pid}/reject` |
 | Обсуждения | `GET`/`POST /events/{id}/comments`, `PATCH`/`DELETE /comments/{cid}` |
 | Организации | `GET /organizations`, `GET /organizations/{id}`, `GET /organizations/{id}/events`, `POST /organizations`, `GET /organizations/my`, `PATCH /organizations/{id}`, `POST /organizations/{id}/resubmit` |
 | Уведомления | `GET /notifications`, `POST /notifications/{id}/read` |
+| Рекомендации | `GET /recommendations/events`, `GET /events/{id}/similar` — подробно в [docs/recommendations.md](docs/recommendations.md) |
 | Админ | `/admin/dashboard`, `/admin/organizations[/{id}/approve\|reject]`, `/admin/events[/{id}/unpublish\|restore]`, `DELETE /admin/events/{id}`, `/admin/comments/{cid}/hide`, `/admin/audit-log`, `/admin/cache/stats`, `/admin/cache/flush` |
 
 ## Что сделано по безопасности

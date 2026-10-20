@@ -16,7 +16,6 @@ import com.example.STOLOTO.repository.AuditLogRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/** Журнал действий администратора (таблица audit_log). */
 @Service
 @Transactional
 @RequiredArgsConstructor

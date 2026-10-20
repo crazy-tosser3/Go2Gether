@@ -2,9 +2,11 @@ package com.example.STOLOTO.DTO.user;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import com.example.STOLOTO.Models.Level;
 import com.example.STOLOTO.Models.Role;
+import com.example.STOLOTO.Models.TimeSlot;
 
 public record UserResponse(
         Long id,
@@ -17,5 +19,11 @@ public record UserResponse(
         Level level,
         List<Long> sportIds,
         boolean isDemo,
-        Instant createdAt) {
+        Instant createdAt,
+        Integer birthYear,
+        Map<Long, Level> sportLevels,
+        Integer radiusKm,
+        List<TimeSlot> preferredTimes,
+        Integer preferredAgeFrom,
+        Integer preferredAgeTo) {
 }

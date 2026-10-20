@@ -22,7 +22,6 @@ public class SafetyController {
 
     private final SafetyService safetyService;
 
-    /** Лента баннеров. ?category=first_aid или ?sport=3 (баннеры спорта + общие). */
     @GetMapping("/banners")
     public List<SafetyBannerCard> feed(
             @RequestParam(required = false) SafetyCategory category,

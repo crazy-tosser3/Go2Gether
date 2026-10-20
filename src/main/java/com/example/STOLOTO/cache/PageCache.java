@@ -26,15 +26,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
-/**
- * Кэш готовых ответов API в Redis.
- *
- * <p>Ключ: {@code stoloto:page:g{global}:{region}:v{version}:{key}}. Инвалидация — без SCAN/DEL:
- * {@link #invalidate} делает INCR версии региона (после коммита транзакции), и старые ключи
- * просто перестают читаться и умирают по TTL. {@link #flushAll} поднимает глобальную версию.
- *
- * <p>Если Redis недоступен, запрос идёт напрямую в БД — кэш не ломает приложение.
- */
 @Component
 public class PageCache {
 
@@ -42,7 +33,6 @@ public class PageCache {
     private static final String PAGE = "stoloto:page:";
     private static final String VERSION = "stoloto:ver:";
     private static final String GLOBAL = "_global";
-    /** Ключи версий живут дольше любого TTL страницы, потом безопасно сбрасываются в 0. */
     private static final Duration VERSION_TTL = Duration.ofDays(1);
 
     private final StringRedisTemplate redis;
@@ -82,7 +72,6 @@ public class PageCache {
         return value;
     }
 
-    /** Сбросить регионы. Внутри транзакции — только после успешного коммита, иначе сразу. */
     public void invalidate(String... regions) {
         Set<String> unique = new LinkedHashSet<>(List.of(regions));
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -97,7 +86,6 @@ public class PageCache {
         }
     }
 
-    /** Сбросить весь кэш страниц (новая глобальная версия). */
     public void flushAll() {
         bump(Set.of(GLOBAL));
     }
@@ -115,7 +103,6 @@ public class PageCache {
                 return null;
             });
         } catch (RuntimeException e) {
-            // Не смогли сбросить — данные обновятся по TTL
             log.warn("Не удалось инвалидировать кэш {}: {}", regions, e.getMessage());
         }
     }
@@ -136,7 +123,6 @@ public class PageCache {
         return versions == null || versions.get(i) == null ? "0" : versions.get(i);
     }
 
-    /** Длинные ключи (поисковые фильтры) хешируем, короткие оставляем читаемыми. */
     private static String safe(String key) {
         if (key.length() <= 120) {
             return key;

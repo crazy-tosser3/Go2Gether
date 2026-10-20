@@ -57,11 +57,8 @@ public class EventService {
     private final PageCache cache;
     private final CacheRegions regions;
 
-    /** Фильтры ленты и админского поиска. organizer — id пользователя, organization — id организации. */
     public record Filter(String q, Long sport, String city, LocalDate dateFrom, LocalDate dateTo, Level level,
             JoinMode joinMode, Long organizer, Long organization) {
-
-        /** Ключ кэша: регистр и пробелы в q не плодят разные записи. */
         String cacheKey() {
             String query = q == null || q.isBlank() ? "" : q.trim().toLowerCase();
             String c = city == null || city.isBlank() ? "" : city.trim().toLowerCase();
@@ -70,9 +67,6 @@ public class EventService {
         }
     }
 
-    // ---------- лента / карточка
-
-    /** Только published и starts_at > now, сортировка по дате. */
     @Transactional(readOnly = true)
     public PageResponse<EventShortResponse> search(Filter f, Integer page, Integer size) {
         var pageable = PageResponse.pageable(page, size, Sort.by("startsAt"));
@@ -89,17 +83,12 @@ public class EventService {
         return mapper.personalize(card, currentUser.find().orElse(null));
     }
 
-    /** Общая карточка события из кэша (на промахе — из БД). */
     @Transactional(readOnly = true)
     public EventCard card(Long id) {
         return cache.get(CacheRegions.event(id), "card", CacheRegions.EVENT_TTL, new TypeReference<EventCard>() {},
                 () -> mapper.toEventCard(require(id)));
     }
 
-    /**
-     * Опубликованное событие видно всем. Снятое/удалённое/отменённое — админу, организатору
-     * и тем, кто записывался (с баннером-причиной); остальным — 410.
-     */
     @Transactional(readOnly = true)
     public EventCard requireViewableCard(Long id) {
         EventCard card = card(id);
@@ -115,12 +104,9 @@ public class EventService {
         throw unavailable(e);
     }
 
-    // ---------- организатор
-
     public EventDetailsResponse create(CreateEventRequest r) {
         User me = currentUser.require();
         Event e = new Event();
-        // Организатор — ровно один: пользователь ЛИБО организация (chk_one_organizer)
         if (r.organizationId() != null) {
             organizationService.requireApprovedOwned(r.organizationId(), me.getId());
             e.setOrganizerOrgId(r.organizationId());
@@ -228,8 +214,6 @@ public class EventService {
         return mapper.toEventDetails(e, me);
     }
 
-    // ---------- админ
-
     @Transactional(readOnly = true)
     public PageResponse<EventShortResponse> adminSearch(EventStatus status, String q, Long organizer,
             Long organization, Integer page, Integer size) {
@@ -279,13 +263,10 @@ public class EventService {
                 "Публикация восстановлена", null);
     }
 
-    // ---------- helpers
-
     public Event require(Long id) {
         return events.findById(id).orElseThrow(() -> ApiException.notFound("Мероприятие не найдено"));
     }
 
-    /** Событие, где текущий пользователь — организатор (админ тоже получает 403). */
     public Event requireOrganized(Long id, User me) {
         Event e = require(id);
         if (!mapper.isOrganizer(e, me.getId())) {
@@ -312,7 +293,6 @@ public class EventService {
         audit.event(admin.getId(), e.getId(), action, reason);
         String body = "«" + e.getTitle() + "»" + (reason == null ? "" : ". Причина: " + reason);
         notificationService.notify(mapper.organizerRecipient(e), notification, title, body, e.getId());
-        // Записавшимся тоже: снято / удалено / восстановлено (сценарий 6)
         notifyParticipants(e, notification, title, body);
         return mapper.toEventDetails(e, admin);
     }

@@ -47,7 +47,6 @@ public class AdminService {
                 users.count());
     }
 
-    /** Сбросить кэш страниц и Spring-кэши (направления, демо-аккаунты). */
     public void flushCache() {
         pageCache.flushAll();
         cacheManager.getCacheNames().forEach(name -> {
@@ -58,7 +57,6 @@ public class AdminService {
         });
     }
 
-    /** Попадания/промахи кэша страниц по регионам (счётчики stoloto.page.cache). */
     public CacheStatsResponse cacheStats() {
         Map<String, long[]> byRegion = new TreeMap<>();
         MeterRegistry registry = meters.getIfAvailable();

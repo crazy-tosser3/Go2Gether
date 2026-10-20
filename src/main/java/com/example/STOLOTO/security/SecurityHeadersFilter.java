@@ -8,6 +8,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.example.STOLOTO.Services.AvatarStorage;
+
 import java.io.IOException;
 
 @Component
@@ -49,7 +51,7 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
                 "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()");
         response.setHeader("X-XSS-Protection", "1; mode=block");
 
-        if (path.startsWith("/api/")) {
+        if (path.startsWith("/api/") && !path.startsWith(AvatarStorage.PATH)) {
             response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
             response.setHeader("Pragma", "no-cache");
         }

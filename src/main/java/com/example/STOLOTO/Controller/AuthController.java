@@ -60,7 +60,6 @@ public class AuthController {
                 .build();
     }
 
-    /** Cookie с Max-Age=0 — браузер удаляет JWT (logout, удаление аккаунта). */
    public static ResponseCookie clearCookie() {
         return ResponseCookie.from(COOKIE_NAME, "")
                 .httpOnly(true)
