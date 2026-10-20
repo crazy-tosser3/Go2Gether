@@ -31,6 +31,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return !request.getRequestURI().startsWith("/api/");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain)
@@ -74,8 +79,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String type = getBucketType(path, method);
         Bandwidth limit = switch (type) {
             // 10 запросов в минуту — защита от перебора паролей
-            case "auth"  -> Bandwidth.classic(10,
-                    Refill.greedy(10, Duration.ofMinutes(1)));
+            case "auth"  -> Bandwidth.classic(60,
+                    Refill.greedy(60, Duration.ofMinutes(1)));
             // 60 запросов в минуту — запись
             case "write" -> Bandwidth.classic(60,
                     Refill.greedy(60, Duration.ofMinutes(1)));
