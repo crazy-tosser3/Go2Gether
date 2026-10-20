@@ -84,6 +84,11 @@ public class SecurityConfig {
                                 API + "/safety/banners", API + "/safety/banners/*",
                                 API + "/organizations", API + "/organizations/*", API + "/organizations/*/events")
                         .permitAll()
+                        // Фронт (статика и маршруты SPA) — всё, что не API и не служебное
+                        .requestMatchers(request -> (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod()))
+                                && !request.getRequestURI().startsWith("/api/")
+                                && !request.getRequestURI().startsWith("/actuator"))
+                        .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(rs -> rs
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))

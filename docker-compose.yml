@@ -3,16 +3,12 @@ services:
     image: postgres:18
     container_name: StolotoHack
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: UmirFlagman
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: 787901
-    ports:
-      - "127.0.0.1:5432:15432"
+    env_file:
+      - docker-env
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d UmirFlagman"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,8 +18,6 @@ services:
     image: redis:7
     container_name: StolotoHackRedis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -39,7 +33,7 @@ services:
     container_name: STOLOTO
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:8080:8080"
     env_file:
       - docker-env
     environment:

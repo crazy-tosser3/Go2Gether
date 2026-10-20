@@ -41,3 +41,7 @@ build/
 ### Uploaded avatars ###
 data/
 migrations-wip.patch
+
+### Deploy secrets ###
+docker-env
+app.jar
