@@ -8,7 +8,7 @@ REST API для поиска и проведения любительских с
 |---|---|
 | Язык / фреймворк | Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Actuator) |
 | Безопасность | Spring Security, OAuth2 Resource Server (JWT HS256), Argon2id (`argon2-jvm`), Bucket4j |
-| БД | PostgreSQL 18, Flyway (миграции `V01`–`V16`) |
+| БД | PostgreSQL 18, Flyway (миграции `V01`–`V17`) |
 | Кэш / сессии | Redis 7 (Spring Cache + собственный кэш страниц, белый список JWT) |
 | Документация | springdoc-openapi (Swagger UI) |
 | Тесты | JUnit 5, MockMvc, Testcontainers (Postgres + Redis) |
