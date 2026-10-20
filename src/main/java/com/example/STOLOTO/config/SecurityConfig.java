@@ -79,6 +79,7 @@ public class SecurityConfig {
                                 API + "/events/*/participants", API + "/events/*/comments",
                                 API + "/users/*",
                                 API + "/sports", API + "/sports/*",
+                                API + "/safety/banners", API + "/safety/banners/*",
                                 API + "/organizations", API + "/organizations/*", API + "/organizations/*/events")
                         .permitAll()
                         .anyRequest().authenticated())
