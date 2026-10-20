@@ -43,10 +43,7 @@ public class ParticipationService {
     private final PageCache cache;
     private final CacheRegions regions;
 
-    /**
-     * POST /events/{id}/join — логика со стр. 3 схемы. Строка события блокируется (SELECT ... FOR UPDATE),
-     * чтобы лимит мест не превысили параллельные записи.
-     */
+
     public JoinResponse join(Long eventId, String message) {
         User me = currentUser.require();
         Event e = lockEvent(eventId);
@@ -59,12 +56,21 @@ public class ParticipationService {
         if (mapper.isOrganizer(e, me.getId())) {
             throw ApiException.conflict("OWN_EVENT", "Нельзя записаться на своё событие");
         }
-        // UNIQUE(event_id, user_id): после rejected/cancelled переиспользуем ту же строку
         Participation p = participations.findByEventIdAndUserId(eventId, me.getId()).orElse(null);
         if (p != null && p.getStatus().isActive()) {
             throw ApiException.conflict("ALREADY_JOINED", "У вас уже есть активная запись",
                     Map.of("participation_id", p.getId().toString(), "status", p.getStatus().name().toLowerCase()));
         }
+        // Отказ организатора окончательный: повторная заявка — спам организатору
+        if (p != null && p.getStatus() == ParticipationStatus.REJECTED) {
+            String reason = p.getDecisionReason();
+            throw ApiException.conflict("REJECTED",
+                    "Организатор отклонил вашу заявку" + (reason == null || reason.isBlank() ? "" : ": " + reason),
+                    reason == null || reason.isBlank()
+                            ? Map.of("participation_id", p.getId().toString())
+                            : Map.of("participation_id", p.getId().toString(), "reason", reason));
+        }
+
         Instant now = Instant.now();
         if (p == null) {
             p = new Participation();
@@ -99,7 +105,6 @@ public class ParticipationService {
         return new JoinResponse(text, mapper.toParticipation(p), details);
     }
 
-    /** DELETE /events/{id}/join — отменить свою запись/заявку. */
     public ParticipationResponse leave(Long eventId) {
         User me = currentUser.require();
         Event e = lockEvent(eventId);
@@ -118,10 +123,7 @@ public class ParticipationService {
         return mapper.toParticipation(p);
     }
 
-    /**
-     * Отменить все активные записи пользователя (удаление аккаунта). Освободившиеся места
-     * отдаются листу ожидания.
-     */
+
     public void cancelAllForUser(Long userId) {
         participations.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .filter(p -> p.getStatus().isActive())

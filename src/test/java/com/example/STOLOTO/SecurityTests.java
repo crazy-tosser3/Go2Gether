@@ -230,6 +230,29 @@ class SecurityTests {
         org.junit.jupiter.api.Assertions.assertTrue(notified, "Организатор должен получить уведомление о вопросе");
     }
 
+    @Autowired com.example.STOLOTO.repository.ParticipationRepository participationsRepo;
+
+    @Test
+    @DisplayName("TC-072: после отказа повторная заявка → 409 REJECTED")
+    void reapplyAfterRejection_returns409() throws Exception {
+        Long eventId = eventsRepo.findAll().stream()
+                .filter(e -> "Настольный теннис на Татышеве".equals(e.getTitle()))
+                .findFirst().orElseThrow().getId();
+        User applicant = users.findByEmailIgnoreCase("user2@demo.local").orElseThrow();
+
+        var p = participationsRepo.findByEventIdAndUserId(eventId, applicant.getId()).orElseThrow();
+        p.setStatus(com.example.STOLOTO.Models.ParticipationStatus.REJECTED);
+        p.setDecisionReason("Нужен средний уровень");
+        participationsRepo.saveAndFlush(p);
+
+        mvc.perform(post("/api/v1/events/" + eventId + "/join")
+                        .header("Authorization", "Bearer " + jwtService.issue(applicant))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\": \"Попробую ещё раз\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("REJECTED"))
+                .andExpect(jsonPath("$.error.fields.reason").value("Нужен средний уровень"));
+    }
 
     private String tokenForUser(Role role) {
         User u = new User();
