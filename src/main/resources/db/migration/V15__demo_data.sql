@@ -122,4 +122,7 @@ INSERT INTO comments (event_id, author_id, text) VALUES
 
 INSERT INTO comments (event_id, author_id, as_organization_id, parent_id, text) VALUES
 ((SELECT id FROM events        WHERE title = 'Мини-футбол 5×5 вечером'),
- (SELECT id FROM users
+ (SELECT id FROM users         WHERE email = 'org@demo.local'),
+ (SELECT id FROM organizations WHERE name  = 'ФК «Дворовые легенды»'),
+ (SELECT id FROM comments      WHERE text  = 'Если пойдёт дождь, игра состоится?'),
+ 'Да, поле с покрытием, играем при любой погоде. Если отменим — напишем здесь и пришлём уведомление.');
