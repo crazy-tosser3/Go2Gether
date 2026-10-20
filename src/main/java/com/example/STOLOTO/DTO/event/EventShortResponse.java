@@ -22,5 +22,8 @@ public record EventShortResponse(
         long confirmedCount,
         EventStatus status,
         boolean isPast,
-        boolean isEdited) {
+        boolean isEdited,
+        /** Приблизительно (±1 км), для точек на карте. Точные — в карточке, только участникам. */
+        Double lat,
+        Double lng) {
 }

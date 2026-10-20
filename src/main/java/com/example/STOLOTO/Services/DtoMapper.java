@@ -144,7 +144,11 @@ public class DtoMapper {
     public EventShortResponse toEventShort(Event e) {
         return new EventShortResponse(e.getId(), e.getTitle(), sport(e.getSportId()), organizer(e), e.getStartsAt(),
                 e.getEndsAt(), e.getCity(), e.getAddress(), e.getLevel(), e.getJoinMode(), e.getCapacity(),
-                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(), e.isPast(), e.isEdited());
+                count(e.getId(), ParticipationStatus.CONFIRMED), e.getStatus(), e.isPast(), e.isEdited(),
+                approx(e.getLat()), approx(e.getLng()));
+    }
+    private static Double approx(Double coordinate) {
+        return coordinate == null ? null : Math.round(coordinate * 100) / 100.0;
     }
 
     /** Карточка события глазами viewer (null — гость). */
